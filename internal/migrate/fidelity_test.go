@@ -17,7 +17,7 @@ func bflag(key string) model.Flag {
 
 func TestFidelityPerfectCorpus(t *testing.T) {
 	projects := proj("p", bflag("a"), bflag("b"), bflag("c"))
-	r := FidelityReport(projects, nil)
+	r := FidelityReport("launchdarkly", projects, nil)
 	if r.TotalFlags != 3 || r.FullyMappedFlags != 3 || len(r.Unmapped) != 0 {
 		t.Fatalf("perfect corpus = %+v", r)
 	}
@@ -35,7 +35,7 @@ func TestFidelityPartialUnmappedFlags(t *testing.T) {
 		{Project: "p", Flag: "b", Type: "clause-operator", Detail: "op X unsupported"},
 		{Project: "p", Flag: "d", Type: "weighted-rollout", Detail: "3 variations collapsed"},
 	}
-	r := FidelityReport(projects, unmapped)
+	r := FidelityReport("launchdarkly", projects, unmapped)
 	// 2 of 4 flags fully mapped = 0.5
 	if r.TotalFlags != 4 || r.FullyMappedFlags != 2 {
 		t.Fatalf("counts = %d/%d, want 2/4", r.FullyMappedFlags, r.TotalFlags)
@@ -55,7 +55,7 @@ func TestFidelityMultipleIssuesSameFlagCountsOnce(t *testing.T) {
 		{Project: "p", Flag: "b", Type: "bucketBy"},
 		{Project: "p", Flag: "b", Type: "weighted-rollout"},
 	}
-	r := FidelityReport(projects, unmapped)
+	r := FidelityReport("launchdarkly", projects, unmapped)
 	if r.FullyMappedFlags != 1 || r.TotalFlags != 2 {
 		t.Fatalf("counts = %d/%d, want 1/2 — one flag with 3 issues counts once", r.FullyMappedFlags, r.TotalFlags)
 	}
@@ -71,7 +71,7 @@ func TestFidelityByTypeBreakdown(t *testing.T) {
 		{Project: "p", Flag: "a", Type: "bucketBy"},
 		{Project: "p", Flag: "b", Type: "clause-operator"},
 	}
-	r := FidelityReport(projects, unmapped)
+	r := FidelityReport("launchdarkly", projects, unmapped)
 	if r.ByType["clause-operator"] != 2 || r.ByType["bucketBy"] != 1 {
 		t.Fatalf("by-type = %v", r.ByType)
 	}
@@ -82,10 +82,10 @@ func TestFidelityReportRendersMarkdown(t *testing.T) {
 	unmapped := []Unmapped{
 		{Project: "p", Flag: "b", Type: "clause-operator", Detail: "operator \"semverEqual\" not supported"},
 	}
-	r := FidelityReport(projects, unmapped)
+	r := FidelityReport("unleash", projects, unmapped)
 	md := r.Markdown()
 	for _, want := range []string{
-		"# LaunchDarkly migration fidelity",
+		"# Unleash migration fidelity",
 		"- **Total flags:** 2",
 		"- **Fully mapped:** 1",
 		"- **Fidelity:** 50.0%",

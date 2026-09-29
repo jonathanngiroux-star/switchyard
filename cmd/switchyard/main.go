@@ -15,6 +15,7 @@ import (
 	"github.com/switchyard/switchyard/internal/eval"
 	"github.com/switchyard/switchyard/internal/migrate"
 	"github.com/switchyard/switchyard/internal/migrate/launchdarkly"
+	"github.com/switchyard/switchyard/internal/migrate/unleash"
 	"github.com/switchyard/switchyard/internal/model"
 	"github.com/switchyard/switchyard/internal/serve"
 	"github.com/switchyard/switchyard/internal/store"
@@ -190,56 +191,61 @@ func runMigrate(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
+	var parse func(data []byte) ([]model.Project, []migrate.Unmapped, error)
+	var describe func(p model.Project) string
 	switch *from {
 	case "launchdarkly":
-		data, err := os.ReadFile(*input)
-		if err != nil {
-			fmt.Fprintf(stderr, "migrate: read %s: %v\n", *input, err)
-			return 1
-		}
-		projects, unmapped, err := launchdarkly.Parse(data)
-		if err != nil {
-			fmt.Fprintf(stderr, "migrate: %v\n", err)
-			return 1
-		}
-		diff := migrate.DiffProjects(projects, nil, unmapped)
-		report := migrate.FidelityReport(projects, unmapped)
-		if *fidelityPath != "" {
-			if err := os.WriteFile(*fidelityPath, []byte(report.Markdown()), 0o644); err != nil {
-				fmt.Fprintf(stderr, "migrate: write fidelity report: %v\n", err)
-				return 1
-			}
-		}
-		if !report.Pass(*fidelityGate) {
-			fmt.Fprintf(stderr, "migrate: fidelity %.1f%% below gate %.1f%% — refusing to pretend\n",
-				report.Score*100, *fidelityGate*100)
-			return 1
-		}
-		if *format == "json" {
-			out := struct {
-				Diff     migrate.Diff    `json:"diff"`
-				Fidelity *migrate.Report `json:"fidelity"`
-			}{Diff: diff, Fidelity: report}
-			if err := json.NewEncoder(stdout).Encode(out); err != nil {
-				fmt.Fprintf(stderr, "migrate: encode: %v\n", err)
-				return 1
-			}
-			return 0
-		}
-		for _, p := range projects {
-			fmt.Fprintln(stdout, launchdarkly.Describe(p))
-		}
-		fmt.Fprintf(stdout, "summary: %d added, %d removed, %d changed, %d unmapped\n",
-			diff.Summary.Added, diff.Summary.Removed, diff.Summary.Changed, diff.Summary.Unmapped)
-		for _, u := range diff.Unmapped {
-			fmt.Fprintf(stdout, "unmapped: [%s] flag=%s rule=%s detail=%s\n", u.Type, u.Flag, u.Rule, u.Detail)
-		}
-		return 0
+		parse = launchdarkly.Parse
+		describe = launchdarkly.Describe
 	case "unleash":
-		fmt.Fprintln(stderr, "migrate: --from=unleash is not implemented until Week 8; refusing to pretend fidelity")
-		return 1
+		parse = unleash.Parse
+		describe = unleash.Describe
 	default:
 		fmt.Fprintf(stderr, "migrate: unknown --from %q (launchdarkly|unleash)\n", *from)
 		return 1
 	}
+
+	data, err := os.ReadFile(*input)
+	if err != nil {
+		fmt.Fprintf(stderr, "migrate: read %s: %v\n", *input, err)
+		return 1
+	}
+	projects, unmapped, err := parse(data)
+	if err != nil {
+		fmt.Fprintf(stderr, "migrate: %v\n", err)
+		return 1
+	}
+	diff := migrate.DiffProjects(projects, nil, unmapped)
+	report := migrate.FidelityReport(*from, projects, unmapped)
+	if *fidelityPath != "" {
+		if err := os.WriteFile(*fidelityPath, []byte(report.Markdown()), 0o644); err != nil {
+			fmt.Fprintf(stderr, "migrate: write fidelity report: %v\n", err)
+			return 1
+		}
+	}
+	if !report.Pass(*fidelityGate) {
+		fmt.Fprintf(stderr, "migrate: fidelity %.1f%% below gate %.1f%% — refusing to pretend\n",
+			report.Score*100, *fidelityGate*100)
+		return 1
+	}
+	if *format == "json" {
+		out := struct {
+			Diff     migrate.Diff    `json:"diff"`
+			Fidelity *migrate.Report `json:"fidelity"`
+		}{Diff: diff, Fidelity: report}
+		if err := json.NewEncoder(stdout).Encode(out); err != nil {
+			fmt.Fprintf(stderr, "migrate: encode: %v\n", err)
+			return 1
+		}
+		return 0
+	}
+	for _, p := range projects {
+		fmt.Fprintln(stdout, describe(p))
+	}
+	fmt.Fprintf(stdout, "summary: %d added, %d removed, %d changed, %d unmapped\n",
+		diff.Summary.Added, diff.Summary.Removed, diff.Summary.Changed, diff.Summary.Unmapped)
+	for _, u := range diff.Unmapped {
+		fmt.Fprintf(stdout, "unmapped: [%s] flag=%s rule=%s detail=%s\n", u.Type, u.Flag, u.Rule, u.Detail)
+	}
+	return 0
 }

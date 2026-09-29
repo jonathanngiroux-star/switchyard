@@ -1,0 +1,374 @@
+{
+  "version": 5,
+  "projects": [
+    {
+      "id": "default",
+      "name": "Default",
+      "description": "Default project",
+      "defaultStickiness": "userId",
+      "environments": [
+        {
+          "name": "development",
+          "type": "development",
+          "enabled": true,
+          "sortOrder": 1
+        },
+        {
+          "name": "production",
+          "type": "production",
+          "enabled": true,
+          "sortOrder": 2
+        }
+      ]
+    }
+  ],
+  "features": [
+    {
+      "name": "checkouts-v2",
+      "description": "New checkout flow",
+      "type": "release",
+      "project": "default",
+      "stale": false,
+      "archived": false,
+      "variants": [],
+      "environments": [
+        {
+          "name": "development",
+          "enabled": true,
+          "type": "development",
+          "sortOrder": 1,
+          "strategies": [
+            {
+              "name": "default",
+              "parameters": {},
+              "constraints": [],
+              "segments": [],
+              "disabled": false
+            }
+          ]
+        },
+        {
+          "name": "production",
+          "enabled": false,
+          "type": "production",
+          "sortOrder": 1,
+          "strategies": [
+            {
+              "name": "default",
+              "parameters": {},
+              "constraints": [],
+              "segments": [],
+              "disabled": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "api-rate-limit",
+      "description": "API rate limiting",
+      "type": "operational",
+      "project": "default",
+      "stale": false,
+      "archived": false,
+      "variants": [],
+      "environments": [
+        {
+          "name": "production",
+          "enabled": true,
+          "type": "production",
+          "sortOrder": 1,
+          "strategies": [
+            {
+              "name": "flexibleRollout",
+              "parameters": {
+                "rollout": "50",
+                "stickiness": "userId",
+                "groupId": "api-rate-limit"
+              },
+              "constraints": [
+                {
+                  "contextName": "environment",
+                  "operator": "IN",
+                  "values": [
+                    "production"
+                  ],
+                  "caseInsensitive": false,
+                  "inverted": false
+                }
+              ],
+              "segments": [],
+              "disabled": false
+            },
+            {
+              "name": "userWithId",
+              "parameters": {
+                "userIds": "vip-1,vip-2"
+              },
+              "constraints": [],
+              "segments": [],
+              "disabled": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "beta-dashboard",
+      "description": "Beta dashboard",
+      "type": "experiment",
+      "project": "default",
+      "stale": false,
+      "archived": false,
+      "variants": [],
+      "environments": [
+        {
+          "name": "production",
+          "enabled": true,
+          "type": "production",
+          "sortOrder": 1,
+          "strategies": [
+            {
+              "name": "default",
+              "parameters": {},
+              "constraints": [
+                {
+                  "contextName": "country",
+                  "operator": "IN",
+                  "values": [
+                    "US",
+                    "CA"
+                  ],
+                  "caseInsensitive": false,
+                  "inverted": false
+                }
+              ],
+              "segments": [
+                1
+              ],
+              "disabled": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "checkout-copy",
+      "description": "Checkout copy",
+      "type": "experiment",
+      "project": "default",
+      "stale": false,
+      "archived": false,
+      "variants": [
+        {
+          "name": "legacy",
+          "weight": 1000,
+          "weightType": "fixed",
+          "stickiness": "default",
+          "payload": {
+            "type": "string",
+            "value": "legacy-copy"
+          }
+        }
+      ],
+      "environments": [
+        {
+          "name": "production",
+          "enabled": true,
+          "type": "production",
+          "sortOrder": 1,
+          "strategies": [
+            {
+              "name": "default",
+              "parameters": {},
+              "constraints": [],
+              "segments": [],
+              "disabled": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "search-timeout",
+      "description": "Search timeout ms",
+      "type": "operational",
+      "project": "default",
+      "stale": false,
+      "archived": false,
+      "variants": [
+        {
+          "name": "normal",
+          "weight": 1000,
+          "weightType": "fixed",
+          "stickiness": "default",
+          "payload": {
+            "type": "number",
+            "value": 1500
+          }
+        }
+      ],
+      "environments": [
+        {
+          "name": "production",
+          "enabled": true,
+          "type": "production",
+          "sortOrder": 1,
+          "strategies": [
+            {
+              "name": "default",
+              "parameters": {},
+              "constraints": [],
+              "segments": [],
+              "disabled": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "recommender-config",
+      "description": "Recommender config",
+      "type": "experiment",
+      "project": "default",
+      "stale": false,
+      "archived": false,
+      "variants": [
+        {
+          "name": "stable",
+          "weight": 1000,
+          "weightType": "fixed",
+          "stickiness": "default",
+          "payload": {
+            "type": "json",
+            "value": "{\"model\": \"v1\", \"topK\": 10}"
+          }
+        }
+      ],
+      "environments": [
+        {
+          "name": "production",
+          "enabled": true,
+          "type": "production",
+          "sortOrder": 1,
+          "strategies": [
+            {
+              "name": "default",
+              "parameters": {},
+              "constraints": [],
+              "segments": [],
+              "disabled": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "dark-launch",
+      "description": "Dark launch",
+      "type": "release",
+      "project": "default",
+      "stale": false,
+      "archived": false,
+      "variants": [],
+      "environments": [
+        {
+          "name": "production",
+          "enabled": true,
+          "type": "production",
+          "sortOrder": 1,
+          "strategies": []
+        }
+      ]
+    },
+    {
+      "name": "growth-experiments",
+      "description": "Growth",
+      "type": "experiment",
+      "project": "default",
+      "stale": false,
+      "archived": false,
+      "variants": [],
+      "environments": [
+        {
+          "name": "production",
+          "enabled": true,
+          "type": "production",
+          "sortOrder": 1,
+          "strategies": [
+            {
+              "name": "default",
+              "parameters": {},
+              "constraints": [
+                {
+                  "contextName": "email",
+                  "operator": "STR_STARTS_WITH",
+                  "values": [
+                    "admin@"
+                  ],
+                  "caseInsensitive": false,
+                  "inverted": false
+                },
+                {
+                  "contextName": "age",
+                  "operator": "NUM_GT",
+                  "values": [
+                    "21"
+                  ],
+                  "caseInsensitive": false,
+                  "inverted": false
+                }
+              ],
+              "segments": [],
+              "disabled": false
+            },
+            {
+              "name": "default",
+              "parameters": {},
+              "constraints": [
+                {
+                  "contextName": "memberSince",
+                  "operator": "DATE_AFTER",
+                  "values": [
+                    "2024-01-01T00:00:00Z"
+                  ],
+                  "caseInsensitive": false,
+                  "inverted": false
+                },
+                {
+                  "contextName": "device",
+                  "operator": "REGEX",
+                  "values": [
+                    "^ios-.*$"
+                  ],
+                  "caseInsensitive": false,
+                  "inverted": false
+                }
+              ],
+              "segments": [],
+              "disabled": false
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "segments": [
+    {
+      "id": 1,
+      "name": "Beta users",
+      "description": "Beta program members",
+      "constraints": [
+        {
+          "contextName": "email",
+          "operator": "STR_ENDS_WITH",
+          "values": [
+            "@beta.test"
+          ],
+          "caseInsensitive": false,
+          "inverted": false
+        }
+      ]
+    }
+  ]
+}

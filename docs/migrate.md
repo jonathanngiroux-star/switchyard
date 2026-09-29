@@ -50,6 +50,37 @@ flag as `added`.
 - Unleash migrator (W8) must list its gaps the same way — strategy types
   that do not map get named, not faked.
 
+## Unleash migration (W8 — shipped)
+
+`switchyard migrate --from=unleash --dry-run` parses Unleash state exports
+(schema v5). Strategy mapping:
+
+| Unleash strategy | Switchyard mapping |
+|---|---|
+| `default` (no constraints) | flag on, serves everyone |
+| `default` + constraints | rule with those clauses |
+| `userWithId` | rule: `targetingKey in [ids]` |
+| `flexibleRollout` / `gradualRollout` (no constraints) | fallthrough percentage rollout |
+| `flexibleRollout` + constraints | rule with its own percentage rollout (match AND bucket) |
+| `gradualRolloutRandom` | **gap** — non-sticky randomness can't be preserved; flag fails closed (0%) |
+| any other/custom strategy | **gap** — `strategy-unsupported` |
+| enabled + zero active strategies | 0% rollout (Unleash serves nobody) |
+
+Constraint operators mapped (14): `IN`, `NOT_IN`, `STR_STARTS_WITH`,
+`STR_ENDS_WITH`, `STR_CONTAINS`, `NUM_EQ`, `NUM_GT`, `NUM_GTE`, `NUM_LT`,
+`NUM_LTE`, `DATE_AFTER`, `DATE_BEFORE`, `REGEX` — with `NOT_IN`/inverted
+carrying Negate and `userId` mapping to `targetingKey`.
+Environment-scoped constraints are evaluated at import time: tautologies
+drop, non-matching envs mark the strategy dead.
+
+Unleash-specific gap types (all reported in `unmapped`, never dropped):
+`strategy-random-rollout`, `stickiness`, `bucketBy` (custom `groupId`),
+`strategy-unsupported`, `strategy-conflict`, `constraint-operator`,
+`constraint-case-insensitive`, `weighted-variants`, `variant-payload`,
+`segment-missing`. Corpora: `testdata/fixtures/unleash/` — representative
+(CI-gated at 100%) and edge (unmappable by design, all gaps contract-tested).
+Report: `docs/fidelity/unleash.md`.
+
 ## Environment mapping (W5–7)
 
 LD project/environment → Switchyard environment (`dev`, `staging`,

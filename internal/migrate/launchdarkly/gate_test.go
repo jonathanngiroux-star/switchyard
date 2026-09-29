@@ -27,7 +27,7 @@ func TestFullCorpusFidelityMeetsGate(t *testing.T) {
 	// CI gate: the representative corpus must map 100%. If a parser change
 	// drops fidelity on mappable constructs, this test fails CI.
 	projects, unmapped := corpus(t, "full-export.json")
-	r := migrate.FidelityReport(projects, unmapped)
+	r := migrate.FidelityReport("launchdarkly", projects, unmapped)
 	if r.Score != 1.0 {
 		t.Fatalf("representative corpus should map 100%%, got %.1f%%:\n%s", r.Score*100, r.Markdown())
 	}
@@ -54,7 +54,7 @@ func TestEdgeCorpusReportsEveryGapType(t *testing.T) {
 
 func TestEdgeCorpusFidelityIsLowAndHonest(t *testing.T) {
 	projects, unmapped := corpus(t, "edge-cases.json")
-	r := migrate.FidelityReport(projects, unmapped)
+	r := migrate.FidelityReport("launchdarkly", projects, unmapped)
 	if r.Score >= 0.9 {
 		t.Fatalf("edge corpus fidelity = %.1f%%, should be well below the gate (it is unmappable by design)", r.Score*100)
 	}

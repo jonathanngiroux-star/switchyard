@@ -47,7 +47,7 @@ func TestRunMigrateLaunchDarklyDryRunUsesDefaultFixture(t *testing.T) {
 			} `json:"unmapped"`
 		} `json:"diff"`
 	}
-	if err := json.Unmarshal(out.Bytes(), &d); err != nil {
+	if err := json.Unmarshal([]byte(out.String()), &d); err != nil {
 		t.Fatalf("decode %q: %v", out.String(), err)
 	}
 	if d.Diff.Summary.Added != 2 || d.Diff.Summary.Unmapped != 0 {
@@ -58,14 +58,65 @@ func TestRunMigrateLaunchDarklyDryRunUsesDefaultFixture(t *testing.T) {
 	}
 }
 
-func TestRunMigrateRefusesUnleashUntilWeek8(t *testing.T) {
-	var out, errBuf bytes.Buffer
-	code := run([]string{"migrate", "--from=unleash", "--dry-run"}, &out, &errBuf)
-	if code == 0 {
-		t.Fatal("unleash must exit non-zero until it is implemented (W8)")
+func TestRunMigrateUnleashDryRun(t *testing.T) {
+	restore := chdirRepoRoot(t)
+	defer restore()
+	var out, errBuf strings.Builder
+	code := run([]string{"migrate", "--from=unleash", "--dry-run", "--format=json",
+		"--input", "testdata/fixtures/unleash/unleash-representative.json"}, &out, &errBuf)
+	if code != 0 {
+		t.Fatalf("exit = %d, stderr = %q", code, errBuf.String())
 	}
-	if !strings.Contains(errBuf.String(), "unleash") {
-		t.Fatalf("stderr = %q, want it to name unleash", errBuf.String())
+	var d struct {
+		Diff struct {
+			Summary struct {
+				Added int `json:"added"`
+			} `json:"summary"`
+		} `json:"diff"`
+		Fidelity struct {
+			Score float64 `json:"score"`
+		} `json:"fidelity"`
+	}
+	if err := json.Unmarshal([]byte(out.String()), &d); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if d.Diff.Summary.Added != 8 {
+		t.Fatalf("added = %d, want 8", d.Diff.Summary.Added)
+	}
+	if d.Fidelity.Score != 1.0 {
+		t.Fatalf("representative corpus fidelity = %v, want 1.0", d.Fidelity.Score)
+	}
+}
+
+func TestRunMigrateUnleashEdgeReportsGaps(t *testing.T) {
+	restore := chdirRepoRoot(t)
+	defer restore()
+	var out, errBuf strings.Builder
+	// Edge corpus is below the gate BY DESIGN; --fidelity-gate 0 lets us
+	// inspect the JSON, and the honesty contract is in the unmapped list.
+	code := run([]string{"migrate", "--from=unleash", "--dry-run", "--format=json",
+		"--input", "testdata/fixtures/unleash/unleash-edge.json", "--fidelity-gate", "0"}, &out, &errBuf)
+	if code != 0 {
+		t.Fatalf("exit = %d, stderr = %q", code, errBuf.String())
+	}
+	if !strings.Contains(out.String(), "strategy-random-rollout") ||
+		!strings.Contains(out.String(), "strategy-unsupported") ||
+		!strings.Contains(out.String(), "constraint-operator") {
+		t.Fatalf("edge corpus gaps missing from JSON: %s", out.String())
+	}
+}
+
+func TestRunMigrateUnleashRefusesBelowGate(t *testing.T) {
+	restore := chdirRepoRoot(t)
+	defer restore()
+	var out, errBuf strings.Builder
+	code := run([]string{"migrate", "--from=unleash", "--dry-run",
+		"--input", "testdata/fixtures/unleash/unleash-edge.json"}, &out, &errBuf)
+	if code == 0 {
+		t.Fatal("edge corpus must exit 1 at the default 90% gate — refusing to pretend")
+	}
+	if !strings.Contains(errBuf.String(), "below gate") {
+		t.Fatalf("stderr = %q", errBuf.String())
 	}
 }
 

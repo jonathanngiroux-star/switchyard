@@ -140,11 +140,13 @@ Two rules govern this output, and CI enforces them:
    (target 95%) on rules and segments. The human-readable report lives in
    `docs/fidelity/launchdarkly.md`.
 
-`--from=unleash` refuses to run until Week 8 rather than pretending:
+`--from=unleash` is shipped with the same contract: representative corpus
+CI-gated, edge corpus unmappable-by-design with every gap named. A corpus
+below the fidelity gate refuses to import rather than pretending:
 
 ```
-$ ./switchyard migrate --from=unleash --dry-run
-migrate: --from=unleash is not implemented until Week 8; refusing to pretend fidelity
+$ ./switchyard migrate --from=unleash --dry-run --input edge-corpus.json
+migrate: fidelity 0.0% below gate 90.0% — refusing to pretend
 ```
 
 ### 4. SDKs — three, and only three
@@ -201,7 +203,7 @@ Honest inventory — this is a young repo. Do not deploy it past a dev box yet.
 | Schema v2: per-environment `value` column, auto-migration from v1, data preserved | **Done** |
 | TS + Python generators | W9 (the SDK *generators*; hand-written Go SDK shipped above) |
 | LD migrator: real export shapes (variations, targets, weighted rollouts, 12 operators, negation, prerequisites), fidelity scoring, CI gate ≥90%, committed report | **Done** (W5–7 shipped — `docs/fidelity/launchdarkly.md`) |
-| Unleash migrator (`--from=unleash --dry-run`, gaps listed) | W8 |
+| Unleash migrator (`--from=unleash --dry-run`): 7 strategies, 14 constraint operators, variants→values, segments by ID, 10 named gap types, CI-gated | **Done** (W8 shipped — `docs/fidelity/unleash.md`) |
 | SCIM skeleton, DPA, audit-log schema, replacement-cost sheet | W10 |
 
 ---

@@ -1,0 +1,320 @@
+{
+  "version": 5,
+  "projects": [
+    {
+      "id": "edge",
+      "name": "Edge",
+      "description": "Unmappable by design",
+      "defaultStickiness": "userId",
+      "environments": [
+        {
+          "name": "production",
+          "type": "production",
+          "enabled": true,
+          "sortOrder": 1
+        }
+      ]
+    }
+  ],
+  "features": [
+    {
+      "name": "random-rollout",
+      "description": "Random rollout",
+      "type": "release",
+      "project": "edge",
+      "variants": [],
+      "environments": [
+        {
+          "name": "production",
+          "enabled": true,
+          "type": "production",
+          "sortOrder": 1,
+          "strategies": [
+            {
+              "name": "gradualRolloutRandom",
+              "parameters": {
+                "percentage": "30"
+              },
+              "constraints": [],
+              "segments": [],
+              "disabled": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "clientid-stickiness",
+      "description": "Client-id stickiness",
+      "type": "release",
+      "project": "edge",
+      "variants": [],
+      "environments": [
+        {
+          "name": "production",
+          "enabled": true,
+          "type": "production",
+          "sortOrder": 1,
+          "strategies": [
+            {
+              "name": "flexibleRollout",
+              "parameters": {
+                "rollout": "50",
+                "stickiness": "clientId",
+                "groupId": "clientid-stickiness"
+              },
+              "constraints": [],
+              "segments": [],
+              "disabled": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "custom-group-id",
+      "description": "Custom group id",
+      "type": "release",
+      "project": "edge",
+      "variants": [],
+      "environments": [
+        {
+          "name": "production",
+          "enabled": true,
+          "type": "production",
+          "sortOrder": 1,
+          "strategies": [
+            {
+              "name": "flexibleRollout",
+              "parameters": {
+                "rollout": "40",
+                "stickiness": "userId",
+                "groupId": "shared-bucket"
+              },
+              "constraints": [],
+              "segments": [],
+              "disabled": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "custom-strategy",
+      "description": "Custom strategy",
+      "type": "release",
+      "project": "edge",
+      "variants": [],
+      "environments": [
+        {
+          "name": "production",
+          "enabled": true,
+          "type": "production",
+          "sortOrder": 1,
+          "strategies": [
+            {
+              "name": "my-company-strategy",
+              "parameters": {
+                "tenant": "acme"
+              },
+              "constraints": [],
+              "segments": [],
+              "disabled": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "semver-constraint",
+      "description": "Semver constraint",
+      "type": "release",
+      "project": "edge",
+      "variants": [],
+      "environments": [
+        {
+          "name": "production",
+          "enabled": true,
+          "type": "production",
+          "sortOrder": 1,
+          "strategies": [
+            {
+              "name": "default",
+              "parameters": {},
+              "constraints": [
+                {
+                  "contextName": "appVersion",
+                  "operator": "SEMVER_GT",
+                  "values": [
+                    "2.0.0"
+                  ],
+                  "caseInsensitive": false,
+                  "inverted": false
+                }
+              ],
+              "segments": [],
+              "disabled": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "weighted-variants",
+      "description": "Weighted variants",
+      "type": "experiment",
+      "project": "edge",
+      "variants": [
+        {
+          "name": "legacy",
+          "weight": 500,
+          "weightType": "fixed",
+          "stickiness": "default",
+          "payload": {
+            "type": "string",
+            "value": "legacy"
+          }
+        },
+        {
+          "name": "v2-short",
+          "weight": 400,
+          "weightType": "fixed",
+          "stickiness": "default",
+          "payload": {
+            "type": "string",
+            "value": "v2-short"
+          }
+        },
+        {
+          "name": "v2-long",
+          "weight": 100,
+          "weightType": "fixed",
+          "stickiness": "default",
+          "payload": {
+            "type": "string",
+            "value": "v2-long"
+          }
+        }
+      ],
+      "environments": [
+        {
+          "name": "production",
+          "enabled": true,
+          "type": "production",
+          "sortOrder": 1,
+          "strategies": [
+            {
+              "name": "default",
+              "parameters": {},
+              "constraints": [],
+              "segments": [],
+              "disabled": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "case-insensitive",
+      "description": "Case-insensitive",
+      "type": "release",
+      "project": "edge",
+      "variants": [],
+      "environments": [
+        {
+          "name": "production",
+          "enabled": true,
+          "type": "production",
+          "sortOrder": 1,
+          "strategies": [
+            {
+              "name": "default",
+              "parameters": {},
+              "constraints": [
+                {
+                  "contextName": "email",
+                  "operator": "IN",
+                  "values": [
+                    "@acme.test"
+                  ],
+                  "caseInsensitive": true,
+                  "inverted": false
+                }
+              ],
+              "segments": [],
+              "disabled": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "mixed-variants",
+      "description": "Mixed variants",
+      "type": "experiment",
+      "project": "edge",
+      "variants": [
+        {
+          "name": "with-payload",
+          "weight": 500,
+          "weightType": "fixed",
+          "stickiness": "default",
+          "payload": {
+            "type": "string",
+            "value": "hello"
+          }
+        },
+        {
+          "name": "no-payload",
+          "weight": 500,
+          "weightType": "fixed",
+          "stickiness": "default"
+        }
+      ],
+      "environments": [
+        {
+          "name": "production",
+          "enabled": true,
+          "type": "production",
+          "sortOrder": 1,
+          "strategies": [
+            {
+              "name": "default",
+              "parameters": {},
+              "constraints": [],
+              "segments": [],
+              "disabled": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "missing-segment",
+      "description": "Missing segment",
+      "type": "release",
+      "project": "edge",
+      "variants": [],
+      "environments": [
+        {
+          "name": "production",
+          "enabled": true,
+          "type": "production",
+          "sortOrder": 1,
+          "strategies": [
+            {
+              "name": "default",
+              "parameters": {},
+              "constraints": [],
+              "segments": [
+                99
+              ],
+              "disabled": false
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "segments": []
+}

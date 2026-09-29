@@ -1,6 +1,6 @@
 # LaunchDarkly migration fidelity
 
-Generated from `testdata/fixtures/launchdarkly/`. Regenerate: `switchyard migrate --from=launchdarkly --dry-run --fidelity docs/fidelity/launchdarkly.md`.
+Regenerate: `switchyard migrate --from=launchdarkly --dry-run --input <corpus> --fidelity <this file>`.
 
 ## Summary
 
