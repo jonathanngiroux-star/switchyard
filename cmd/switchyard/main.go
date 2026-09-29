@@ -1,25 +1,33 @@
-// Command switchyard is the single binary: flag server, migration CLI,
-// and (W3–4) OpenFeature provider scaffolding and SDK generation.
+// Command switchyard is the single binary: flag server, evaluator, and
+// migration CLI. One process, one SQLite file, no external dependencies.
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"strings"
 
+	"github.com/switchyard/switchyard/internal/eval"
 	"github.com/switchyard/switchyard/internal/migrate"
 	"github.com/switchyard/switchyard/internal/migrate/launchdarkly"
+	"github.com/switchyard/switchyard/internal/model"
 	"github.com/switchyard/switchyard/internal/serve"
+	"github.com/switchyard/switchyard/internal/store"
 )
 
 // version is the single source of truth for the binary version. Overridden
 // at build time via -ldflags "-X main.version=...".
 var version = "0.1.0-dev"
 
-const defaultLDFixture = "testdata/fixtures/launchdarkly/sample-export.json"
+const (
+	defaultDBPath    = "switchyard.db"
+	defaultLDFixture = "testdata/fixtures/launchdarkly/sample-export.json"
+)
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
@@ -38,8 +46,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runServe(args[1:], stdout, stderr)
 	case "migrate":
 		return runMigrate(args[1:], stdout, stderr)
-	case "eval", "sdk":
-		fmt.Fprintf(stderr, "%s: not implemented in the v0.1 stub (scheduled W3–4)\n", args[0])
+	case "eval":
+		return runEval(args[1:], stdout, stderr)
+	case "sdk":
+		fmt.Fprintln(stderr, "sdk: not implemented in v0.1 (scheduled W3–4)")
 		return 1
 	default:
 		fmt.Fprintf(stderr, "unknown command %q\n\n", args[0])
@@ -48,20 +58,115 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 }
 
+func usage(w io.Writer) {
+	fmt.Fprintf(w, `switchyard — self-hosted feature-flag control plane
+
+Usage:
+  switchyard version
+  switchyard serve [--addr :8080] [--db PATH]
+  switchyard eval FLAG --env ENV --user KEY [--db PATH] [--attr k=v ...]
+  switchyard migrate --from=launchdarkly --dry-run [--format human|json] [--input PATH]
+  switchyard sdk ...                                 # W3–4
+`)
+}
+
+// --- serve ---
+
 func runServe(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	addr := fs.String("addr", ":8080", "listen address")
+	db := fs.String("db", defaultDBPath, "path to the SQLite database file")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	fmt.Fprintf(stdout, "switchyard serving on %s (in-memory flags, W1–2 store pending)\n", *addr)
-	if err := http.ListenAndServe(*addr, serve.New().Handler()); err != nil {
+	st, err := store.Open(*db)
+	if err != nil {
+		fmt.Fprintf(stderr, "serve: %v\n", err)
+		return 1
+	}
+	defer st.Close()
+	fmt.Fprintf(stdout, "switchyard serving on %s (db: %s)\n", *addr, *db)
+	srv := serve.New(st)
+	if err := http.ListenAndServe(*addr, srv.Handler()); err != nil {
 		fmt.Fprintf(stderr, "serve: %v\n", err)
 		return 1
 	}
 	return 0
 }
+
+// --- eval ---
+
+func runEval(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("eval", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	db := fs.String("db", defaultDBPath, "path to the SQLite database file")
+	env := fs.String("env", "production", "environment to evaluate against")
+	user := fs.String("user", "", "user key for bucketing and targeting")
+	attrs := attrFlag{}
+	fs.Var(&attrs, "attr", "context attribute k=v (repeatable)")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if fs.NArg() < 1 {
+		fmt.Fprintln(stderr, "eval: missing flag key argument")
+		return 2
+	}
+	flagKey := fs.Arg(0)
+	if *user == "" {
+		fmt.Fprintln(stderr, "eval: --user is required")
+		return 2
+	}
+	st, err := store.Open(*db)
+	if err != nil {
+		fmt.Fprintf(stderr, "eval: %v\n", err)
+		return 1
+	}
+	defer st.Close()
+	f, err := st.GetFlag(context.Background(), flagKey)
+	if err == store.ErrNotFound {
+		fmt.Fprintf(stderr, "eval: flag %q not found\n", flagKey)
+		return 1
+	}
+	if err != nil {
+		fmt.Fprintf(stderr, "eval: %v\n", err)
+		return 1
+	}
+	segs, err := st.ListSegments(context.Background())
+	if err != nil {
+		fmt.Fprintf(stderr, "eval: %v\n", err)
+		return 1
+	}
+	segMap := make(map[string]model.Segment, len(segs))
+	for _, sg := range segs {
+		segMap[sg.Key] = sg
+	}
+	d := eval.Evaluate(f, *env, segMap, eval.Context{UserKey: *user, Attributes: attrs})
+	if err := json.NewEncoder(stdout).Encode(d); err != nil {
+		fmt.Fprintf(stderr, "eval: encode: %v\n", err)
+		return 1
+	}
+	return 0
+}
+
+// attrFlag collects repeatable --attr k=v flags.
+type attrFlag map[string]string
+
+func (a *attrFlag) String() string { return "" }
+
+func (a *attrFlag) Set(v string) error {
+	k, val, ok := strings.Cut(v, "=")
+	if !ok || k == "" {
+		return fmt.Errorf("attr must be k=v, got %q", v)
+	}
+	if *a == nil {
+		*a = attrFlag{}
+	}
+	(*a)[k] = val
+	return nil
+}
+
+// --- migrate ---
 
 func runMigrate(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("migrate", flag.ContinueOnError)
@@ -79,7 +184,7 @@ func runMigrate(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	if !*dryRun {
-		fmt.Fprintln(stderr, "migrate: v0.1 is dry-run only; the write path lands with the W1–2 store")
+		fmt.Fprintln(stderr, "migrate: v0.1 is dry-run only; the write path lands with the store")
 		return 1
 	}
 
@@ -119,16 +224,4 @@ func runMigrate(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "migrate: unknown --from %q (launchdarkly|unleash)\n", *from)
 		return 1
 	}
-}
-
-func usage(w io.Writer) {
-	fmt.Fprintf(w, `switchyard — self-hosted feature-flag control plane (v0.1 stub)
-
-Usage:
-  switchyard version
-  switchyard serve [--addr :8080]
-  switchyard migrate --from=launchdarkly|unleash --dry-run [--format human|json] [--input PATH]
-  switchyard eval ...   (W3–4)
-  switchyard sdk ...    (W3–4)
-`)
 }

@@ -46,22 +46,47 @@ Flags are evaluated **locally in your services** — no network call per
 evaluation, no cloud dependency, forever. Gating evaluation behind a hosted
 tier is explicitly forbidden by this project's own governance.
 
-Current HTTP surface (v0.1):
+Current HTTP surface (v0.1, store-backed — state survives restarts):
 
 ```bash
 $ curl localhost:8080/healthz
 {"status":"ok"}
 
-$ curl localhost:8080/flags
-{"flags":[{"key":"welcome-banner","enabled":false}]}
+$ curl -X POST localhost:8080/flags -H 'Content-Type: application/json' \
+    -d '{"key":"welcome-banner","kind":"boolean"}'
+{"key":"welcome-banner","name":"","kind":"boolean","environments":{}}
 
-$ curl -X POST localhost:8080/flags/welcome-banner/toggle
-{"key":"welcome-banner","enabled":true}
+$ curl localhost:8080/flags
+{"flags":[{"key":"welcome-banner","name":"","kind":"boolean","environments":{}}]}
+
+$ curl -X POST localhost:8080/flags/welcome-banner/toggle     # production by default
+{"key":"welcome-banner","env":"production","enabled":true}
+
+$ curl -X POST 'localhost:8080/evaluate/welcome-banner?env=production' \
+    -d '{"userKey":"alice"}'
+{"enabled":true,"reason":"fallthrough"}
+```
+
+And from the same binary, without the server running:
+
+```bash
+$ switchyard eval --env production --user alice welcome-banner --db switchyard.db
+{"enabled":true,"reason":"fallthrough"}
 ```
 
 Deploy target: **90 seconds from `git clone` to toggling a flag** (hard cap
-15 minutes). The cold-start number gets measured and published in this README
-during W1–2 — not claimed, measured.
+15 minutes). Measured (Linux x86_64, Go 1.27, 2026-09-29, `scripts/coldstart.sh`):
+
+| Path | Time |
+|---|---|
+| Binary start → healthz (fresh dir, fresh SQLite) | **0.02–0.09s** |
+| healthz → flag created | ~9ms |
+| flag created → toggled | ~9ms |
+| `docker run` → healthz (image built) | **0.49s** |
+
+The 90-second budget is not tight — the binary path clears it by ~1000x.
+The real budget goes to `go build` (~30s on a laptop) or the first
+`docker build` (~1–2 min, cached after). Reproduce: `bash scripts/coldstart.sh`.
 
 ### 2. Flag model
 
@@ -140,10 +165,10 @@ Honest inventory — this is a young repo. Do not deploy it past a dev box yet.
 |---|---|
 | Single binary, SQLite store (schema v1, FK cascades, WAL) | **Done** |
 | `migrate --from=launchdarkly --dry-run` JSON diff + gap list | **Done** (fixture corpus in-repo) |
-| `serve` HTTP: healthz / list / toggle | **Done** (in-memory; store wiring is next) |
-| Evaluator: attributes, percentage rollout, rules, segments | W1–2 |
-| serve ↔ SQLite persistence + full flag CRUD | W1–2 |
-| Cold-start measurement published here | W1–2 |
+| `serve` HTTP: healthz / list / create / update / delete / toggle, store-backed, persistent across restarts | **Done** |
+| Evaluator: attributes, percentage rollout, rules, segments | **Done** (W1–2 shipped) |
+| `switchyard eval` CLI: local evaluation with `--user`/`--attr` context | **Done** |
+| Cold-start measurement published here | **Done** — see table above |
 | OpenFeature provider + Go SDK | W3–4 |
 | LD fidelity ≥90% on rules+segments, CI-gated, real export corpora | W5–7 |
 | Unleash migrator (`--from=unleash --dry-run`, gaps listed) | W8 |
