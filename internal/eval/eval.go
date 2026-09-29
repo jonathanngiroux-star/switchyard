@@ -20,10 +20,16 @@ type Context struct {
 }
 
 // Decision is the outcome of one evaluation, with a machine-readable reason
-// so SDK consumers can log why a flag resolved the way it did.
+// so SDK consumers can log why a flag resolved the way it did. Value carries
+// the configured payload for non-boolean kinds; Variant names what was
+// served ("on"/"off" in v0.1). ErrorCode is set (OpenFeature-style) when a
+// flag is misconfigured — the caller should fall back to its default.
 type Decision struct {
-	Enabled bool   `json:"enabled"`
-	Reason  string `json:"reason"`
+	Enabled   bool   `json:"enabled"`
+	Value     any    `json:"value"`
+	Variant   string `json:"variant"`
+	Reason    string `json:"reason"`
+	ErrorCode string `json:"errorCode,omitempty"`
 }
 
 // Bucket maps (flagKey, userKey) to a stable bucket in [0, 100).
@@ -40,24 +46,53 @@ func Bucket(flagKey, userKey string) int {
 // segments simply never match.
 //
 // Order: off wins; rules in order (first match wins); fallthrough rollout
-// percentage; else fallthrough enabled.
+// percentage; else fallthrough enabled. The decision carries the configured
+// value: booleans serve true (variant "on") when enabled, false (variant
+// "off") when disabled; non-boolean kinds serve FlagEnvironment.Value, and
+// an enabled non-boolean flag with no configured value reports
+// ErrorCode PARSE_ERROR — the caller must take its own default.
 func Evaluate(f model.Flag, env string, segments map[string]model.Segment, ctx Context) Decision {
 	fe, ok := f.Environments[env]
 	if !ok || !fe.On {
-		return Decision{Enabled: false, Reason: "off"}
+		return Decision{Enabled: false, Reason: "off", Value: false, Variant: "off"}
 	}
+	var d Decision
 	for _, r := range fe.Rules {
 		if ruleMatches(r, f.Key, ctx, segments) {
-			return Decision{Enabled: true, Reason: "rule:" + r.ID}
+			d = Decision{Enabled: true, Reason: "rule:" + r.ID}
+			return withValue(d, f, fe)
 		}
 	}
 	if fe.Rollout != nil && fe.Rollout.Kind == "percentage" {
 		if Bucket(f.Key, ctx.UserKey) < fe.Rollout.Percentage {
-			return Decision{Enabled: true, Reason: "rollout"}
+			return withValue(Decision{Enabled: true, Reason: "rollout"}, f, fe)
 		}
-		return Decision{Enabled: false, Reason: "rollout"}
+		return Decision{Enabled: false, Reason: "rollout", Value: false, Variant: "off"}
 	}
-	return Decision{Enabled: true, Reason: "fallthrough"}
+	return withValue(Decision{Enabled: true, Reason: "fallthrough"}, f, fe)
+}
+
+// withValue attaches the configured payload per flag kind. A non-boolean
+// flag with no value is misconfigured: PARSE_ERROR, nil value, caller
+// takes its default.
+func withValue(d Decision, f model.Flag, fe model.FlagEnvironment) Decision {
+	switch f.Kind {
+	case model.KindBoolean:
+		d.Value = true
+		d.Variant = "on"
+	case model.KindString, model.KindNumber, model.KindJSON:
+		if fe.Value == nil {
+			d.ErrorCode = "PARSE_ERROR"
+			d.Value = nil
+			return d
+		}
+		d.Value = fe.Value
+		d.Variant = "on"
+	default:
+		d.ErrorCode = "PARSE_ERROR"
+		d.Value = nil
+	}
+	return d
 }
 
 // ruleMatches: every clause must match, then the rule's own rollout (if

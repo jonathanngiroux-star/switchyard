@@ -155,6 +155,33 @@ breaking-change policy. No mobile SDKs. No fourth language. A 20-SDK surface
 is how solo-maintained flag projects die; the migration CLI outranks new
 SDKs, always.
 
+**Go SDK — shipped.** `github.com/switchyard/switchyard/sdk` is a thin,
+snapshot-based client. Local evaluation, zero network, no store handle
+required. It also exposes the OpenFeature provider, so OpenFeature apps
+register Switchyard without touching internal packages:
+
+```go
+import (
+    "github.com/switchyard/switchyard/sdk"
+    of "github.com/open-feature/go-sdk/openfeature"
+)
+
+// Plain client:
+c := sdk.New(flags, "production")
+if c.Boolean("checkouts-v2", false, userID, sdk.Attr("plan", "pro")) { ... }
+
+// Or via OpenFeature:
+of.SetProviderAndWait(c.Provider())
+client := of.NewClient("my-app")
+client.Boolean(ctx, "checkouts-v2", false, of.NewEvaluationContext(userID, nil))
+```
+
+The provider satisfies the **real** `openfeature.FeatureProvider` interface —
+enforced by a compile-time assertion and an end-to-end test through
+`of.Client`, not a lookalike API. Type mismatches and missing flags serve
+the caller's default with a proper `FLAG_NOT_FOUND` / `PARSE_ERROR`
+resolution error, never a wrong value.
+
 ---
 
 ## Status: what exists vs. what's scheduled
@@ -166,13 +193,15 @@ Honest inventory — this is a young repo. Do not deploy it past a dev box yet.
 | Single binary, SQLite store (schema v1, FK cascades, WAL) | **Done** |
 | `migrate --from=launchdarkly --dry-run` JSON diff + gap list | **Done** (fixture corpus in-repo) |
 | `serve` HTTP: healthz / list / create / update / delete / toggle, store-backed, persistent across restarts | **Done** |
-| Evaluator: attributes, percentage rollout, rules, segments | **Done** (W1–2 shipped) |
+| Evaluator: attributes, percentage rollout, rules, segments — **with variant values (string/number/JSON)** | **Done** (W1–2 + W3–4 value layer) |
 | `switchyard eval` CLI: local evaluation with `--user`/`--attr` context | **Done** |
 | Cold-start measurement published here | **Done** — see table above |
-| OpenFeature provider + Go SDK | W3–4 |
+| OpenFeature provider (real go-sdk `FeatureProvider`, e2e-tested through `of.Client`) | **Done** (W3–4 shipped) |
+| Go SDK (`sdk/` package: snapshot client + provider) | **Done** (W3–4 shipped) |
+| Schema v2: per-environment `value` column, auto-migration from v1, data preserved | **Done** |
+| TS + Python generators | W9 (the SDK *generators*; hand-written Go SDK shipped above) |
 | LD fidelity ≥90% on rules+segments, CI-gated, real export corpora | W5–7 |
 | Unleash migrator (`--from=unleash --dry-run`, gaps listed) | W8 |
-| TypeScript + Python SDK generators | W9 |
 | SCIM skeleton, DPA, audit-log schema, replacement-cost sheet | W10 |
 
 ---

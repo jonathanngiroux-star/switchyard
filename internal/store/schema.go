@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS flag_environments (
     enabled  INTEGER NOT NULL DEFAULT 0,
     rollout  TEXT,
     rules    TEXT,
+    value    TEXT,
     PRIMARY KEY (flag_key, env_key)
 );
 

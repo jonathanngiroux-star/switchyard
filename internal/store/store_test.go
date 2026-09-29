@@ -19,14 +19,14 @@ func newTestStore(t *testing.T) *Store {
 	return s
 }
 
-func TestSchemaVersionIsOne(t *testing.T) {
+func TestSchemaVersionIsCurrent(t *testing.T) {
 	s := newTestStore(t)
 	v, err := s.SchemaVersion(context.Background())
 	if err != nil {
 		t.Fatalf("schema version: %v", err)
 	}
-	if v != 1 {
-		t.Fatalf("schema version = %d, want 1", v)
+	if v != 2 {
+		t.Fatalf("schema version = %d, want 2", v)
 	}
 }
 

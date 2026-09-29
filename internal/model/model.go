@@ -48,9 +48,12 @@ type Segment struct {
 	Rules []Rule `json:"rules,omitempty"`
 }
 
-// FlagEnvironment is a flag's per-environment configuration.
+// FlagEnvironment is a flag's per-environment configuration. Value holds
+// the configured variant payload for non-boolean kinds (or nil for
+// booleans, where On carries the meaning).
 type FlagEnvironment struct {
 	On      bool     `json:"on"`
+	Value   any      `json:"value,omitempty"`
 	Rollout *Rollout `json:"rollout,omitempty"`
 	Rules   []Rule   `json:"rules,omitempty"`
 }
