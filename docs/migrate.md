@@ -31,14 +31,24 @@ flag as `added`.
 ## Gap policy
 
 - Unsupported constructs produce an `unmapped` entry with `type` + `detail`.
-  v0.1 known gaps: flag `prerequisites`, clause operators outside
-  `segmentMatch | in | startsWith | endsWith`.
-- **Never** claim 100% fidelity. Unleash migrator (W8) must list its gaps
-  the same way — strategy types that do not map get named, not faked.
-- Fidelity score = mapped flags / total source flags, from
-  `migrate.FidelityScore`. CI gate from W5–7: **fail under 90%** on the
-  fixture corpus (`testdata/fixtures/`). Human report:
-  `docs/fidelity/launchdarkly.md`.
+  Known gaps (see `testdata/fixtures/launchdarkly/edge-cases.json` and
+  `docs/fidelity/launchdarkly.md`):
+  - `weighted-rollout` — multi-variation weighted fallthroughs map to the
+    dominant bucket only
+  - `clause-operator` — operators outside the supported set (12 operators)
+  - `bucketBy` — custom bucketing attributes
+  - `segment-unbounded` — LD big-segment membership
+  - Prerequisites are imported onto the flag environment but **not enforced**
+    during evaluation yet (documented, planned)
+- **Never** claim 100% fidelity on a corpus that has unmappable constructs.
+  The representative corpus (`full-export.json`) maps 100% and is CI-gated;
+  the edge corpus is unmappable by design and its gaps are contract-tested.
+- Fidelity score = fully-mapped flags / total source flags. A flag with ANY
+  unmapped construct is not fully mapped. CI gate: **fail under 90%**
+  (`--fidelity-gate`, default 0.9). Human report:
+  `docs/fidelity/launchdarkly.md`, CI verifies it is committed and current.
+- Unleash migrator (W8) must list its gaps the same way — strategy types
+  that do not map get named, not faked.
 
 ## Environment mapping (W5–7)
 

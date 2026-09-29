@@ -200,7 +200,7 @@ Honest inventory — this is a young repo. Do not deploy it past a dev box yet.
 | Go SDK (`sdk/` package: snapshot client + provider) | **Done** (W3–4 shipped) |
 | Schema v2: per-environment `value` column, auto-migration from v1, data preserved | **Done** |
 | TS + Python generators | W9 (the SDK *generators*; hand-written Go SDK shipped above) |
-| LD fidelity ≥90% on rules+segments, CI-gated, real export corpora | W5–7 |
+| LD migrator: real export shapes (variations, targets, weighted rollouts, 12 operators, negation, prerequisites), fidelity scoring, CI gate ≥90%, committed report | **Done** (W5–7 shipped — `docs/fidelity/launchdarkly.md`) |
 | Unleash migrator (`--from=unleash --dry-run`, gaps listed) | W8 |
 | SCIM skeleton, DPA, audit-log schema, replacement-cost sheet | W10 |
 
