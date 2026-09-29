@@ -1,0 +1,21 @@
+Business Source License 1.1
+
+TEMPLATE STUB — not legally reviewed. Do not deploy commercially until
+counsel signs off. Track the canonical text: https://mariadb.com/bsl11/
+
+Parameters:
+
+  Licensor:         Switchyard (project of record)
+  Licensed Work:     the commercial control-plane extras — SSO/SAML,
+                    multi-tenant control plane, audit pipeline (the code
+                    under the BSL scope defined in the manifest)
+  Change Date:      four (4) years from first commercial release
+  Change License:   MIT
+
+Additional Use Grant: You may use the Licensed Work to operate your own
+internal feature-flag control plane, including inside a commercial company
+and in service of commercial products, provided you do not offer a competing
+hosted feature-flag control-plane service to third parties.
+
+Everything outside the Licensed Work (server core, evaluator, migrate CLI,
+OpenFeature provider, the three SDKs) is MIT — see LICENSE.

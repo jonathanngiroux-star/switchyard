@@ -1,0 +1,185 @@
+{
+  "projects": [
+    {
+      "key": "default",
+      "name": "Default Project",
+      "environments": [
+        {
+          "key": "dev",
+          "name": "Development"
+        },
+        {
+          "key": "staging",
+          "name": "Staging"
+        },
+        {
+          "key": "production",
+          "name": "Production"
+        }
+      ],
+      "flags": [
+        {
+          "key": "checkouts-v2",
+          "name": "New checkout flow",
+          "kind": "boolean",
+          "version": 42,
+          "temporary": false,
+          "prerequisites": [],
+          "environments": {
+            "dev": {
+              "on": true,
+              "targets": [],
+              "rules": [],
+              "fallthrough": {
+                "variation": 0,
+                "rollout": null
+              },
+              "trackEvents": true
+            },
+            "staging": {
+              "on": true,
+              "targets": [],
+              "rules": [],
+              "fallthrough": {
+                "variation": 0,
+                "rollout": {
+                  "kind": "percentage",
+                  "percentage": 25,
+                  "bucketBy": null
+                }
+              },
+              "trackEvents": false
+            },
+            "production": {
+              "on": false,
+              "targets": [],
+              "rules": [],
+              "fallthrough": {
+                "variation": 0,
+                "rollout": {
+                  "kind": "percentage",
+                  "percentage": 10,
+                  "bucketBy": null
+                }
+              },
+              "trackEvents": false
+            }
+          }
+        },
+        {
+          "key": "api-rate-limit",
+          "name": "API rate limiting",
+          "kind": "boolean",
+          "version": 7,
+          "temporary": false,
+          "prerequisites": [
+            {
+              "flag": "checkouts-v2",
+              "variation": 0
+            }
+          ],
+          "environments": {
+            "dev": {
+              "on": true,
+              "targets": [],
+              "rules": [],
+              "fallthrough": {
+                "variation": 0,
+                "rollout": null
+              }
+            },
+            "staging": {
+              "on": true,
+              "targets": [],
+              "rules": [],
+              "fallthrough": {
+                "variation": 0,
+                "rollout": null
+              }
+            },
+            "production": {
+              "on": true,
+              "targets": [],
+              "rules": [
+                {
+                  "id": "rule-segment-beta",
+                  "variation": 0,
+                  "clauses": [
+                    {
+                      "attribute": "segment",
+                      "operator": "segmentMatch",
+                      "values": [
+                        "beta-users"
+                      ],
+                      "negate": false
+                    }
+                  ]
+                },
+                {
+                  "id": "rule-before-date",
+                  "variation": 0,
+                  "clauses": [
+                    {
+                      "attribute": "memberSince",
+                      "operator": "before",
+                      "values": [
+                        "2024-01-01"
+                      ],
+                      "negate": false
+                    }
+                  ]
+                },
+                {
+                  "id": "rule-acme-domain",
+                  "variation": 0,
+                  "rollout": {
+                    "kind": "percentage",
+                    "percentage": 50,
+                    "bucketBy": null
+                  },
+                  "clauses": [
+                    {
+                      "attribute": "email",
+                      "operator": "endsWith",
+                      "values": [
+                        "@acme.test"
+                      ],
+                      "negate": false
+                    }
+                  ]
+                }
+              ],
+              "fallthrough": {
+                "variation": 0,
+                "rollout": null
+              }
+            }
+          }
+        }
+      ],
+      "segments": [
+        {
+          "key": "beta-users",
+          "name": "Beta users",
+          "description": "Users enrolled in the beta program",
+          "unbounded": false,
+          "version": 3,
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "email",
+                  "operator": "endsWith",
+                  "values": [
+                    "@beta.acme.test"
+                  ],
+                  "negate": false
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
