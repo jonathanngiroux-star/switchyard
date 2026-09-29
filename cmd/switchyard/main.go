@@ -64,7 +64,7 @@ func usage(w io.Writer) {
 Usage:
   switchyard version
   switchyard serve [--addr :8080] [--db PATH]
-  switchyard eval FLAG --env ENV --user KEY [--db PATH] [--attr k=v ...]
+  switchyard eval [--env ENV] --user KEY [--db PATH] [--attr k=v ...] FLAG
   switchyard migrate --from=launchdarkly --dry-run [--format human|json] [--input PATH]
   switchyard sdk ...                                 # W3–4
 `)
