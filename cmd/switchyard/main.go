@@ -175,6 +175,8 @@ func runMigrate(args []string, stdout, stderr io.Writer) int {
 	dryRun := fs.Bool("dry-run", false, "print what an import would change (v0.1 is dry-run only)")
 	format := fs.String("format", "human", "output format: human|json")
 	input := fs.String("input", defaultLDFixture, "path to the source export file")
+	fidelityPath := fs.String("fidelity", "", "write the human-readable fidelity report to this path")
+	fidelityGate := fs.Float64("fidelity-gate", 0.9, "minimum fidelity score; exit 1 below (CI gate)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -201,8 +203,24 @@ func runMigrate(args []string, stdout, stderr io.Writer) int {
 			return 1
 		}
 		diff := migrate.DiffProjects(projects, nil, unmapped)
+		report := migrate.FidelityReport(projects, unmapped)
+		if *fidelityPath != "" {
+			if err := os.WriteFile(*fidelityPath, []byte(report.Markdown()), 0o644); err != nil {
+				fmt.Fprintf(stderr, "migrate: write fidelity report: %v\n", err)
+				return 1
+			}
+		}
+		if !report.Pass(*fidelityGate) {
+			fmt.Fprintf(stderr, "migrate: fidelity %.1f%% below gate %.1f%% — refusing to pretend\n",
+				report.Score*100, *fidelityGate*100)
+			return 1
+		}
 		if *format == "json" {
-			if err := json.NewEncoder(stdout).Encode(diff); err != nil {
+			out := struct {
+				Diff     migrate.Diff    `json:"diff"`
+				Fidelity *migrate.Report `json:"fidelity"`
+			}{Diff: diff, Fidelity: report}
+			if err := json.NewEncoder(stdout).Encode(out); err != nil {
 				fmt.Fprintf(stderr, "migrate: encode: %v\n", err)
 				return 1
 			}

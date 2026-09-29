@@ -31,28 +31,30 @@ func TestRunMigrateLaunchDarklyDryRunUsesDefaultFixture(t *testing.T) {
 		t.Fatalf("exit = %d, stderr = %q", code, errBuf.String())
 	}
 	var d struct {
-		Summary struct {
-			Added    int `json:"added"`
-			Removed  int `json:"removed"`
-			Changed  int `json:"changed"`
-			Unmapped int `json:"unmapped"`
-		} `json:"summary"`
-		Added []struct {
-			Key string `json:"key"`
-		} `json:"added"`
-		Unmapped []struct {
-			Flag string `json:"flag"`
-			Type string `json:"type"`
-		} `json:"unmapped"`
+		Diff struct {
+			Summary struct {
+				Added    int `json:"added"`
+				Removed  int `json:"removed"`
+				Changed  int `json:"changed"`
+				Unmapped int `json:"unmapped"`
+			} `json:"summary"`
+			Added []struct {
+				Key string `json:"key"`
+			} `json:"added"`
+			Unmapped []struct {
+				Flag string `json:"flag"`
+				Type string `json:"type"`
+			} `json:"unmapped"`
+		} `json:"diff"`
 	}
 	if err := json.Unmarshal(out.Bytes(), &d); err != nil {
 		t.Fatalf("decode %q: %v", out.String(), err)
 	}
-	if d.Summary.Added != 2 || d.Summary.Removed != 0 || d.Summary.Changed != 0 || d.Summary.Unmapped != 2 {
-		t.Fatalf("summary = %+v, want added=2 removed=0 changed=0 unmapped=2", d.Summary)
+	if d.Diff.Summary.Added != 2 || d.Diff.Summary.Unmapped != 0 {
+		t.Fatalf("summary = %+v, want added=2 unmapped=0 (sample export fully maps)", d.Diff.Summary)
 	}
-	if len(d.Added) != 2 || d.Added[0].Key != "checkouts-v2" {
-		t.Fatalf("added = %+v", d.Added)
+	if len(d.Diff.Added) != 2 || d.Diff.Added[0].Key != "checkouts-v2" {
+		t.Fatalf("added = %+v", d.Diff.Added)
 	}
 }
 

@@ -26,7 +26,7 @@ const (
 
 	// schemaVersion is the current schema version, stored in PRAGMA
 	// user_version. v2 adds the `value` column to flag_environments.
-	schemaVersion = 2
+	schemaVersion = 3
 )
 
 // Store wraps the SQLite handle.
@@ -83,16 +83,21 @@ func (s *Store) migrate() error {
 		return fmt.Errorf("apply schema: %w", err)
 	}
 
-	// v1 -> v2: add the value column. ALTER TABLE ADD COLUMN is a no-op if
-	// the column already exists (fresh v2 databases); detect it first so
-	// the error message stays honest for genuinely broken databases.
-	var colCount int
-	if err := tx.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('flag_environments') WHERE name = 'value'`).Scan(&colCount); err != nil {
-		return fmt.Errorf("inspect flag_environments: %w", err)
+	// Versioned column additions. Each is a no-op when the column already
+	// exists (fresh databases); pragma detection keeps errors honest.
+	addCols := map[string]string{
+		"value":         "v2: configured variant payload",
+		"prerequisites": "v3: flag prerequisites (imported from LD)",
 	}
-	if colCount == 0 {
-		if _, err := tx.Exec(`ALTER TABLE flag_environments ADD COLUMN value TEXT`); err != nil {
-			return fmt.Errorf("add value column: %w", err)
+	for col, why := range addCols {
+		var colCount int
+		if err := tx.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('flag_environments') WHERE name = ?`, col).Scan(&colCount); err != nil {
+			return fmt.Errorf("inspect flag_environments: %w", err)
+		}
+		if colCount == 0 {
+			if _, err := tx.Exec(fmt.Sprintf(`ALTER TABLE flag_environments ADD COLUMN %s TEXT`, col)); err != nil {
+				return fmt.Errorf("add %s column (%s): %w", col, why, err)
+			}
 		}
 	}
 
@@ -140,13 +145,17 @@ func (s *Store) PutFlag(ctx context.Context, f model.Flag) error {
 		if err != nil {
 			return err
 		}
+		prereqs, err := encodePrereqs(fe.Prerequisites)
+		if err != nil {
+			return err
+		}
 		enabled := 0
 		if fe.On {
 			enabled = 1
 		}
 		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO flag_environments(flag_key, env_key, enabled, rollout, rules, value) VALUES(?, ?, ?, ?, ?, ?)`,
-			f.Key, envKey, enabled, rollout, rules, value); err != nil {
+			`INSERT INTO flag_environments(flag_key, env_key, enabled, rollout, rules, value, prerequisites) VALUES(?, ?, ?, ?, ?, ?, ?)`,
+			f.Key, envKey, enabled, rollout, rules, value, prereqs); err != nil {
 			return fmt.Errorf("insert env %s/%s: %w", f.Key, envKey, err)
 		}
 	}
@@ -165,7 +174,7 @@ func (s *Store) GetFlag(ctx context.Context, key string) (model.Flag, error) {
 		return model.Flag{}, fmt.Errorf("get flag %s: %w", key, err)
 	}
 	rows, err := s.db.QueryContext(ctx,
-		"SELECT env_key, enabled, rollout, rules, value FROM flag_environments WHERE flag_key = ?", key)
+		"SELECT env_key, enabled, rollout, rules, value, prerequisites FROM flag_environments WHERE flag_key = ?", key)
 	if err != nil {
 		return model.Flag{}, fmt.Errorf("get envs for %s: %w", key, err)
 	}
@@ -173,8 +182,8 @@ func (s *Store) GetFlag(ctx context.Context, key string) (model.Flag, error) {
 	for rows.Next() {
 		var envKey string
 		var enabled int
-		var rollout, rules, value sql.NullString
-		if err := rows.Scan(&envKey, &enabled, &rollout, &rules, &value); err != nil {
+		var rollout, rules, value, prereqs sql.NullString
+		if err := rows.Scan(&envKey, &enabled, &rollout, &rules, &value, &prereqs); err != nil {
 			return model.Flag{}, fmt.Errorf("scan env row: %w", err)
 		}
 		fe := model.FlagEnvironment{On: enabled == 1}
@@ -185,6 +194,9 @@ func (s *Store) GetFlag(ctx context.Context, key string) (model.Flag, error) {
 			return model.Flag{}, err
 		}
 		if err := decodeValue(value, &fe); err != nil {
+			return model.Flag{}, err
+		}
+		if err := decodePrereqs(prereqs, &fe); err != nil {
 			return model.Flag{}, err
 		}
 		f.Environments[envKey] = fe
@@ -212,7 +224,7 @@ func (s *Store) ListFlags(ctx context.Context) ([]model.Flag, error) {
 		return nil, err
 	}
 	envRows, err := s.db.QueryContext(ctx,
-		"SELECT flag_key, env_key, enabled, rollout, rules, value FROM flag_environments")
+		"SELECT flag_key, env_key, enabled, rollout, rules, value, prerequisites FROM flag_environments")
 	if err != nil {
 		return nil, fmt.Errorf("list envs: %w", err)
 	}
@@ -224,8 +236,8 @@ func (s *Store) ListFlags(ctx context.Context) ([]model.Flag, error) {
 	for envRows.Next() {
 		var flagKey, envKey string
 		var enabled int
-		var rollout, rules, value sql.NullString
-		if err := envRows.Scan(&flagKey, &envKey, &enabled, &rollout, &rules, &value); err != nil {
+		var rollout, rules, value, prereqs sql.NullString
+		if err := envRows.Scan(&flagKey, &envKey, &enabled, &rollout, &rules, &value, &prereqs); err != nil {
 			return nil, fmt.Errorf("scan env list row: %w", err)
 		}
 		f, ok := byKey[flagKey]
@@ -240,6 +252,9 @@ func (s *Store) ListFlags(ctx context.Context) ([]model.Flag, error) {
 			return nil, err
 		}
 		if err := decodeValue(value, &fe); err != nil {
+			return nil, err
+		}
+		if err := decodePrereqs(prereqs, &fe); err != nil {
 			return nil, err
 		}
 		f.Environments[envKey] = fe
@@ -318,6 +333,29 @@ func encodeValue(v any) (sql.NullString, error) {
 		return sql.NullString{}, fmt.Errorf("encode value: %w", err)
 	}
 	return sql.NullString{String: string(b), Valid: true}, nil
+}
+
+func encodePrereqs(pr []model.Prerequisite) (sql.NullString, error) {
+	if len(pr) == 0 {
+		return sql.NullString{}, nil
+	}
+	b, err := json.Marshal(pr)
+	if err != nil {
+		return sql.NullString{}, fmt.Errorf("encode prerequisites: %w", err)
+	}
+	return sql.NullString{String: string(b), Valid: true}, nil
+}
+
+func decodePrereqs(ns sql.NullString, fe *model.FlagEnvironment) error {
+	if !ns.Valid || strings.TrimSpace(ns.String) == "" || ns.String == "null" {
+		return nil
+	}
+	var pr []model.Prerequisite
+	if err := json.Unmarshal([]byte(ns.String), &pr); err != nil {
+		return fmt.Errorf("decode prerequisites %q: %w", ns.String, err)
+	}
+	fe.Prerequisites = pr
+	return nil
 }
 
 func decodeValue(ns sql.NullString, fe *model.FlagEnvironment) error {

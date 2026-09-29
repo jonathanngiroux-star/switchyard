@@ -1,0 +1,554 @@
+{
+  "projects": [
+    {
+      "key": "acme-prod",
+      "name": "Acme Production",
+      "environments": [
+        {
+          "key": "dev",
+          "name": "Development"
+        },
+        {
+          "key": "staging",
+          "name": "Staging"
+        },
+        {
+          "key": "production",
+          "name": "Production"
+        }
+      ],
+      "flags": [
+        {
+          "key": "checkouts-v2",
+          "name": "New checkout flow",
+          "kind": "boolean",
+          "version": 42,
+          "variations": [
+            {
+              "value": true,
+              "name": "on"
+            },
+            {
+              "value": false,
+              "name": "off"
+            }
+          ],
+          "prerequisites": [],
+          "environments": {
+            "dev": {
+              "on": true,
+              "rules": [],
+              "targets": [],
+              "fallthrough": {
+                "variation": 0,
+                "rollout": null
+              }
+            },
+            "staging": {
+              "on": true,
+              "rules": [],
+              "targets": [],
+              "fallthrough": {
+                "variation": 0,
+                "rollout": {
+                  "kind": "percentage",
+                  "percentage": 25,
+                  "bucketBy": null
+                }
+              }
+            },
+            "production": {
+              "on": false,
+              "rules": [],
+              "targets": [],
+              "fallthrough": {
+                "variation": 1,
+                "rollout": {
+                  "kind": "percentage",
+                  "percentage": 10,
+                  "bucketBy": null
+                }
+              }
+            }
+          }
+        },
+        {
+          "key": "api-rate-limit",
+          "name": "API rate limiting",
+          "kind": "boolean",
+          "version": 7,
+          "variations": [
+            {
+              "value": true,
+              "name": "on"
+            },
+            {
+              "value": false,
+              "name": "off"
+            }
+          ],
+          "prerequisites": [
+            {
+              "flag": "checkouts-v2",
+              "variation": 0
+            }
+          ],
+          "environments": {
+            "production": {
+              "on": true,
+              "targets": [],
+              "rules": [
+                {
+                  "id": "rule-segment-beta",
+                  "variation": 0,
+                  "clauses": [
+                    {
+                      "attribute": "segment",
+                      "operator": "segmentMatch",
+                      "values": [
+                        "beta-users"
+                      ],
+                      "negate": false
+                    }
+                  ]
+                },
+                {
+                  "id": "rule-vips",
+                  "variation": 0,
+                  "clauses": [
+                    {
+                      "attribute": "targetingKey",
+                      "operator": "in",
+                      "values": [
+                        "vip-1",
+                        "vip-2"
+                      ],
+                      "negate": false
+                    }
+                  ]
+                },
+                {
+                  "id": "rule-email-contains",
+                  "variation": 0,
+                  "clauses": [
+                    {
+                      "attribute": "email",
+                      "operator": "contains",
+                      "values": [
+                        "@acme.test"
+                      ],
+                      "negate": false
+                    }
+                  ]
+                },
+                {
+                  "id": "rule-regex",
+                  "variation": 0,
+                  "rollout": {
+                    "kind": "percentage",
+                    "percentage": 50,
+                    "bucketBy": null
+                  },
+                  "clauses": [
+                    {
+                      "attribute": "email",
+                      "operator": "matches",
+                      "values": [
+                        "^admin@.*\\.test$"
+                      ],
+                      "negate": false
+                    }
+                  ]
+                },
+                {
+                  "id": "rule-numeric",
+                  "variation": 0,
+                  "clauses": [
+                    {
+                      "attribute": "age",
+                      "operator": "greaterThanOrEqual",
+                      "values": [
+                        "21"
+                      ],
+                      "negate": false
+                    }
+                  ]
+                },
+                {
+                  "id": "rule-negated",
+                  "variation": 0,
+                  "clauses": [
+                    {
+                      "attribute": "plan",
+                      "operator": "in",
+                      "values": [
+                        "free"
+                      ],
+                      "negate": true
+                    }
+                  ]
+                },
+                {
+                  "id": "rule-date",
+                  "variation": 0,
+                  "clauses": [
+                    {
+                      "attribute": "memberSince",
+                      "operator": "before",
+                      "values": [
+                        "2024-01-01T00:00:00Z"
+                      ],
+                      "negate": false
+                    }
+                  ]
+                },
+                {
+                  "id": "rule-multi-clause",
+                  "variation": 0,
+                  "clauses": [
+                    {
+                      "attribute": "country",
+                      "operator": "in",
+                      "values": [
+                        "US",
+                        "CA"
+                      ],
+                      "negate": false
+                    },
+                    {
+                      "attribute": "device",
+                      "operator": "startsWith",
+                      "values": [
+                        "ios"
+                      ],
+                      "negate": false
+                    }
+                  ]
+                }
+              ],
+              "fallthrough": {
+                "variation": 1,
+                "rollout": null
+              }
+            },
+            "dev": {
+              "on": true,
+              "rules": [],
+              "targets": [],
+              "fallthrough": {
+                "variation": 0,
+                "rollout": null
+              }
+            },
+            "staging": {
+              "on": true,
+              "rules": [],
+              "targets": [],
+              "fallthrough": {
+                "variation": 0,
+                "rollout": {
+                  "kind": "percentage",
+                  "percentage": 100,
+                  "bucketBy": null
+                }
+              }
+            }
+          }
+        },
+        {
+          "key": "checkout-copy",
+          "name": "Checkout copy variant",
+          "kind": "string",
+          "version": 3,
+          "variations": [
+            {
+              "value": "legacy",
+              "name": "Legacy copy"
+            },
+            {
+              "value": "v2-short",
+              "name": "V2 short"
+            },
+            {
+              "value": "v2-long",
+              "name": "V2 long"
+            }
+          ],
+          "prerequisites": [],
+          "environments": {
+            "production": {
+              "on": true,
+              "targets": [],
+              "rules": [
+                {
+                  "id": "rule-us",
+                  "variation": 1,
+                  "clauses": [
+                    {
+                      "attribute": "country",
+                      "operator": "in",
+                      "values": [
+                        "US"
+                      ],
+                      "negate": false
+                    }
+                  ]
+                }
+              ],
+              "fallthrough": {
+                "variation": 0,
+                "rollout": null
+              }
+            }
+          }
+        },
+        {
+          "key": "search-timeout-ms",
+          "name": "Search timeout",
+          "kind": "number",
+          "version": 5,
+          "variations": [
+            {
+              "value": 500,
+              "name": "fast"
+            },
+            {
+              "value": 1500,
+              "name": "normal"
+            },
+            {
+              "value": 5000,
+              "name": "slow"
+            }
+          ],
+          "prerequisites": [],
+          "environments": {
+            "production": {
+              "on": true,
+              "targets": [],
+              "rules": [],
+              "fallthrough": {
+                "variation": 1,
+                "rollout": {
+                  "kind": "percentage",
+                  "percentage": 100,
+                  "bucketBy": null
+                }
+              }
+            }
+          }
+        },
+        {
+          "key": "recommender-config",
+          "name": "Recommender config",
+          "kind": "json",
+          "version": 9,
+          "variations": [
+            {
+              "value": {
+                "model": "v1",
+                "topK": 10
+              },
+              "name": "stable"
+            },
+            {
+              "value": {
+                "model": "v2",
+                "topK": 25
+              },
+              "name": "experimental"
+            }
+          ],
+          "prerequisites": [],
+          "environments": {
+            "production": {
+              "on": true,
+              "targets": [],
+              "rules": [],
+              "fallthrough": {
+                "variation": 0,
+                "rollout": null
+              }
+            }
+          }
+        },
+        {
+          "key": "superadmin-mode",
+          "name": "Superadmin mode",
+          "kind": "boolean",
+          "version": 2,
+          "variations": [
+            {
+              "value": true,
+              "name": "on"
+            },
+            {
+              "value": false,
+              "name": "off"
+            }
+          ],
+          "prerequisites": [],
+          "environments": {
+            "production": {
+              "on": true,
+              "targets": [
+                {
+                  "values": [
+                    "admin-1@acme.test",
+                    "admin-2@acme.test"
+                  ],
+                  "variation": 0
+                }
+              ],
+              "rules": [],
+              "fallthrough": {
+                "variation": 1,
+                "rollout": null
+              }
+            }
+          }
+        }
+      ],
+      "segments": [
+        {
+          "key": "beta-users",
+          "name": "Beta users",
+          "description": "Beta program",
+          "unbounded": false,
+          "version": 3,
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "email",
+                  "operator": "endsWith",
+                  "values": [
+                    "@beta.acme.test"
+                  ],
+                  "negate": false
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "key": "enterprise-accounts",
+          "name": "Enterprise accounts",
+          "unbounded": false,
+          "version": 1,
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "plan",
+                  "operator": "in",
+                  "values": [
+                    "enterprise"
+                  ],
+                  "negate": false
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "acme-dev",
+      "name": "Acme Dev",
+      "environments": [
+        {
+          "key": "dev",
+          "name": "Dev"
+        }
+      ],
+      "flags": [
+        {
+          "key": "debug-logging",
+          "name": "Debug logging",
+          "kind": "boolean",
+          "version": 1,
+          "variations": [
+            {
+              "value": true,
+              "name": "on"
+            },
+            {
+              "value": false,
+              "name": "off"
+            }
+          ],
+          "prerequisites": [],
+          "environments": {
+            "dev": {
+              "on": true,
+              "rules": [],
+              "targets": [],
+              "fallthrough": {
+                "variation": 0,
+                "rollout": null
+              }
+            }
+          }
+        }
+      ],
+      "segments": []
+    },
+    {
+      "key": "acme-legacy",
+      "name": "Acme Legacy",
+      "environments": [
+        {
+          "key": "production",
+          "name": "Production"
+        }
+      ],
+      "flags": [
+        {
+          "key": "legacy-experiment",
+          "name": "Legacy experiment flag",
+          "kind": "boolean",
+          "version": 1,
+          "variations": [
+            {
+              "value": true,
+              "name": "on"
+            },
+            {
+              "value": false,
+              "name": "off"
+            }
+          ],
+          "prerequisites": [],
+          "environments": {
+            "production": {
+              "on": true,
+              "targets": [],
+              "rules": [
+                {
+                  "id": "rule-legacy-country",
+                  "variation": 0,
+                  "clauses": [
+                    {
+                      "attribute": "country",
+                      "operator": "in",
+                      "values": [
+                        "US"
+                      ],
+                      "negate": false
+                    }
+                  ]
+                }
+              ],
+              "fallthrough": {
+                "variation": 1,
+                "rollout": null
+              }
+            }
+          }
+        }
+      ],
+      "segments": []
+    }
+  ]
+}

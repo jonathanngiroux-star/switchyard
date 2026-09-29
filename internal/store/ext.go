@@ -35,16 +35,21 @@ func (s *Store) SetFlagEnvironment(ctx context.Context, flagKey, envKey string, 
 	if err != nil {
 		return err
 	}
+	prereqs, err := encodePrereqs(fe.Prerequisites)
+	if err != nil {
+		return err
+	}
 	enabled := 0
 	if fe.On {
 		enabled = 1
 	}
 	_, err = s.db.ExecContext(ctx,
-		`INSERT INTO flag_environments(flag_key, env_key, enabled, rollout, rules, value)
-		 VALUES(?, ?, ?, ?, ?, ?)
+		`INSERT INTO flag_environments(flag_key, env_key, enabled, rollout, rules, value, prerequisites)
+		 VALUES(?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(flag_key, env_key) DO UPDATE SET
-		   enabled = excluded.enabled, rollout = excluded.rollout, rules = excluded.rules, value = excluded.value`,
-		flagKey, envKey, enabled, rollout, rules, value)
+		   enabled = excluded.enabled, rollout = excluded.rollout, rules = excluded.rules,
+		   value = excluded.value, prerequisites = excluded.prerequisites`,
+		flagKey, envKey, enabled, rollout, rules, value, prereqs)
 	if err != nil {
 		return fmt.Errorf("upsert env %s/%s: %w", flagKey, envKey, err)
 	}

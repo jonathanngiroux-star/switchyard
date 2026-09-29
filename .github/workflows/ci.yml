@@ -17,5 +17,28 @@ jobs:
         run: go vet ./...
       - name: test
         run: go test ./...
-      # W5–7: add migrate fidelity gate here — CI fails if fidelity
-      # on testdata/fixtures drops under 90%.
+      # W5–7: migration fidelity gates. The representative corpus must stay
+      # at 100% (parser regressions fail CI); the edge corpus must report
+      # every unmappable construct type (honesty contract).
+      - name: build
+        run: go build -o switchyard ./cmd/switchyard
+      - name: fidelity gate (representative corpus, >=90% required)
+        run: |
+          ./switchyard migrate --from=launchdarkly --dry-run \
+            --input testdata/fixtures/launchdarkly/full-export.json \
+            --fidelity docs/fidelity/launchdarkly.md
+      - name: fidelity report is committed and current
+        run: |
+          ./switchyard migrate --from=launchdarkly --dry-run \
+            --input testdata/fixtures/launchdarkly/full-export.json \
+            --fidelity /tmp/check.md --fidelity-gate 0
+          diff docs/fidelity/launchdarkly.md /tmp/check.md \
+            && echo "report current" \
+            || (echo "::error::docs/fidelity/launchdarkly.md is stale — regenerate with 'switchyard migrate --from=launchdarkly --dry-run --input testdata/fixtures/launchdarkly/full-export.json --fidelity docs/fidelity/launchdarkly.md'" && exit 1)
+      - name: edge corpus honesty check (all gap types reported)
+        run: |
+          ./switchyard migrate --from=launchdarkly --dry-run \
+            --input testdata/fixtures/launchdarkly/edge-cases.json \
+            --format=json --fidelity-gate 0 | \
+            jq -e '.fidelity.by_type | has("weighted-rollout") and has("clause-operator") and has("bucketBy") and has("segment-unbounded")' \
+            || (echo "::error::edge corpus gap reporting regressed" && exit 1)

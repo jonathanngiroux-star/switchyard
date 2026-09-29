@@ -22,10 +22,13 @@ type Environment struct {
 }
 
 // Clause is a single matching predicate over a context attribute.
+// The attribute "targetingKey" (aliases: "userKey", "key") resolves to the
+// evaluation user key, so imported user-targeting rules keep working.
 type Clause struct {
 	Attribute string   `json:"attribute"`
-	Operator  string   `json:"operator"` // segmentMatch | in | startsWith | endsWith (v0.1 set)
+	Operator  string   `json:"operator"` // see eval.clauseMatches for the supported set
 	Values    []string `json:"values,omitempty"`
+	Negate    bool     `json:"negate,omitempty"`
 }
 
 // Rollout is a percentage rollout configuration.
@@ -34,11 +37,14 @@ type Rollout struct {
 	Percentage int    `json:"percentage"`
 }
 
-// Rule is an ordered targeting rule made of clauses and an optional rollout.
+// Rule is an ordered targeting rule made of clauses, an optional rollout,
+// and the value served when the rule matches (resolved from the source
+// system's variation index at import time).
 type Rule struct {
 	ID      string   `json:"id"`
 	Clauses []Clause `json:"clauses,omitempty"`
 	Rollout *Rollout `json:"rollout,omitempty"`
+	Value   any      `json:"value,omitempty"`
 }
 
 // Segment is a reusable audience definition.
@@ -48,14 +54,24 @@ type Segment struct {
 	Rules []Rule `json:"rules,omitempty"`
 }
 
+// Prerequisite is a flag dependency: this flag should only serve when the
+// parent flag is serving the given variation. Imported from LD flag-level
+// prerequisites; the evaluator does not enforce them yet (documented gap in
+// docs/fidelity/launchdarkly.md).
+type Prerequisite struct {
+	Flag      string `json:"flag"`
+	Variation int    `json:"variation"`
+}
+
 // FlagEnvironment is a flag's per-environment configuration. Value holds
 // the configured variant payload for non-boolean kinds (or nil for
 // booleans, where On carries the meaning).
 type FlagEnvironment struct {
-	On      bool     `json:"on"`
-	Value   any      `json:"value,omitempty"`
-	Rollout *Rollout `json:"rollout,omitempty"`
-	Rules   []Rule   `json:"rules,omitempty"`
+	On            bool           `json:"on"`
+	Value         any            `json:"value,omitempty"`
+	Rollout       *Rollout       `json:"rollout,omitempty"`
+	Rules         []Rule         `json:"rules,omitempty"`
+	Prerequisites []Prerequisite `json:"prerequisites,omitempty"`
 }
 
 // Flag is a feature flag and its per-environment configuration.

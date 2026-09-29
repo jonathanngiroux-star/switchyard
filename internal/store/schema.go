@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS flag_environments (
     rollout  TEXT,
     rules    TEXT,
     value    TEXT,
+    prerequisites TEXT,
     PRIMARY KEY (flag_key, env_key)
 );
 

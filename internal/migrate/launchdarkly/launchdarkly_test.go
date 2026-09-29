@@ -70,27 +70,20 @@ func TestParseFixtureMapsRolloutAndRules(t *testing.T) {
 }
 
 func TestParseFixtureReportsUnmappedGaps(t *testing.T) {
-	_, unmapped, err := Parse(fixture(t))
+	projects, unmapped, err := Parse(fixture(t))
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	if len(unmapped) != 2 {
-		t.Fatalf("unmapped = %+v, want 2 entries", unmapped)
+	// W5–7 semantics: prerequisites are mapped onto the environment, and
+	// 'before' is a supported operator. The sample export has no genuinely
+	// unmapped constructs left.
+	if len(unmapped) != 0 {
+		t.Fatalf("unmapped = %+v, want 0 entries (prereqs now mapped, before now supported)", unmapped)
 	}
-	sawPrereq, sawOperator := false, false
-	for _, u := range unmapped {
-		switch {
-		case u.Flag == "api-rate-limit" && u.Type == "prerequisites":
-			sawPrereq = true
-		case u.Type == "clause-operator" && u.Rule == "rule-before-date" && u.Detail == "operator \"before\" not supported in v0.1":
-			sawOperator = true
-		}
-	}
-	if !sawPrereq {
-		t.Fatalf("missing prerequisites unmapped entry: %+v", unmapped)
-	}
-	if !sawOperator {
-		t.Fatalf("missing clause-operator unmapped entry: %+v", unmapped)
+	a := projects[0].Flags[1]
+	prod := a.Environments["production"]
+	if len(prod.Prerequisites) != 1 || prod.Prerequisites[0].Flag != "checkouts-v2" {
+		t.Fatalf("prerequisites must map onto the environment: %+v", prod.Prerequisites)
 	}
 }
 

@@ -1,0 +1,163 @@
+{
+  "projects": [
+    {
+      "key": "edge",
+      "name": "Edge cases (unmappable by design)",
+      "environments": [
+        {
+          "key": "production",
+          "name": "Production"
+        }
+      ],
+      "flags": [
+        {
+          "key": "weighted-rollout-flag",
+          "name": "Weighted rollout",
+          "kind": "number",
+          "version": 1,
+          "variations": [
+            {
+              "value": 500,
+              "name": "fast"
+            },
+            {
+              "value": 1500,
+              "name": "normal"
+            },
+            {
+              "value": 5000,
+              "name": "slow"
+            }
+          ],
+          "prerequisites": [],
+          "environments": {
+            "production": {
+              "on": true,
+              "targets": [],
+              "rules": [],
+              "fallthrough": {
+                "variation": null,
+                "rollout": {
+                  "kind": "percentage",
+                  "percentage": 100,
+                  "bucketBy": null,
+                  "weightedVariations": [
+                    {
+                      "variation": 1,
+                      "weight": 80
+                    },
+                    {
+                      "variation": 2,
+                      "weight": 15
+                    },
+                    {
+                      "variation": 0,
+                      "weight": 5
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "key": "semver-flag",
+          "name": "Uses unsupported operator",
+          "kind": "boolean",
+          "version": 1,
+          "variations": [
+            {
+              "value": true,
+              "name": "on"
+            },
+            {
+              "value": false,
+              "name": "off"
+            }
+          ],
+          "prerequisites": [],
+          "environments": {
+            "production": {
+              "on": true,
+              "targets": [],
+              "rules": [
+                {
+                  "id": "rule-semver",
+                  "variation": 0,
+                  "clauses": [
+                    {
+                      "attribute": "version",
+                      "operator": "semverEqual",
+                      "values": [
+                        "1.2.3"
+                      ],
+                      "negate": false
+                    }
+                  ]
+                }
+              ],
+              "fallthrough": {
+                "variation": 1,
+                "rollout": null
+              }
+            }
+          }
+        },
+        {
+          "key": "bucketby-flag",
+          "name": "Uses bucketBy",
+          "kind": "boolean",
+          "version": 1,
+          "variations": [
+            {
+              "value": true,
+              "name": "on"
+            },
+            {
+              "value": false,
+              "name": "off"
+            }
+          ],
+          "prerequisites": [],
+          "environments": {
+            "production": {
+              "on": true,
+              "targets": [],
+              "rules": [],
+              "fallthrough": {
+                "variation": 0,
+                "rollout": {
+                  "kind": "percentage",
+                  "percentage": 50,
+                  "bucketBy": "device"
+                }
+              }
+            }
+          }
+        }
+      ],
+      "segments": [
+        {
+          "key": "big-segment",
+          "name": "Unbounded big segment",
+          "unbounded": true,
+          "version": 1,
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "plan",
+                  "operator": "in",
+                  "values": [
+                    "enterprise"
+                  ],
+                  "negate": false
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

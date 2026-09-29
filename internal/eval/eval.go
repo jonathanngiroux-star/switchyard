@@ -6,7 +6,10 @@ package eval
 import (
 	"crypto/sha256"
 	"encoding/binary"
+	"regexp"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/switchyard/switchyard/internal/model"
 )
@@ -110,6 +113,26 @@ func ruleMatches(r model.Rule, flagKey string, ctx Context, segments map[string]
 }
 
 func clauseMatches(c model.Clause, ctx Context, segments map[string]model.Segment) bool {
+	matched := clauseMatchesPositive(c, ctx, segments)
+	if c.Negate {
+		return !matched
+	}
+	return matched
+}
+
+// attrValue resolves a clause attribute, treating the targeting-key aliases
+// as the evaluation user key so imported user-targeting rules work.
+func attrValue(c model.Clause, ctx Context) (string, bool) {
+	switch c.Attribute {
+	case "targetingKey", "userKey", "key":
+		return ctx.UserKey, ctx.UserKey != ""
+	default:
+		v, ok := ctx.Attributes[c.Attribute]
+		return v, ok
+	}
+}
+
+func clauseMatchesPositive(c model.Clause, ctx Context, segments map[string]model.Segment) bool {
 	switch c.Operator {
 	case "segmentMatch":
 		for _, segKey := range c.Values {
@@ -119,31 +142,81 @@ func clauseMatches(c model.Clause, ctx Context, segments map[string]model.Segmen
 		}
 		return false
 	case "in":
-		v, ok := ctx.Attributes[c.Attribute]
+		v, ok := attrValue(c, ctx)
 		if !ok {
 			return false
 		}
 		return contains(c.Values, v)
-	case "startsWith":
-		v, ok := ctx.Attributes[c.Attribute]
+	case "startsWith", "endsWith", "contains":
+		v, ok := attrValue(c, ctx)
 		if !ok {
 			return false
 		}
 		for _, w := range c.Values {
-			if strings.HasPrefix(v, w) {
+			switch c.Operator {
+			case "startsWith":
+				if strings.HasPrefix(v, w) {
+					return true
+				}
+			case "endsWith":
+				if strings.HasSuffix(v, w) {
+					return true
+				}
+			case "contains":
+				if strings.Contains(v, w) {
+					return true
+				}
+			}
+		}
+		return false
+	case "matches":
+		v, ok := attrValue(c, ctx)
+		if !ok {
+			return false
+		}
+		for _, pattern := range c.Values {
+			re, err := regexp.Compile(pattern)
+			if err != nil {
+				continue // invalid pattern never matches; migrator reports it
+			}
+			if re.MatchString(v) {
 				return true
 			}
 		}
 		return false
-	case "endsWith":
-		v, ok := ctx.Attributes[c.Attribute]
+	case "before", "after":
+		v, ok := attrValue(c, ctx)
 		if !ok {
 			return false
 		}
-		for _, w := range c.Values {
-			if strings.HasSuffix(v, w) {
-				return true
-			}
+		attrT, err1 := parseTime(v)
+		valT, err2 := parseTime(c.Values[0])
+		if err1 != nil || err2 != nil {
+			return false // fail closed on unparseable dates
+		}
+		if c.Operator == "before" {
+			return attrT.Before(valT)
+		}
+		return attrT.After(valT)
+	case "greaterThan", "greaterThanOrEqual", "lessThan", "lessThanOrEqual":
+		v, ok := attrValue(c, ctx)
+		if !ok {
+			return false
+		}
+		attrN, err1 := strconv.ParseFloat(v, 64)
+		valN, err2 := strconv.ParseFloat(c.Values[0], 64)
+		if err1 != nil || err2 != nil {
+			return false // fail closed on non-numbers
+		}
+		switch c.Operator {
+		case "greaterThan":
+			return attrN > valN
+		case "greaterThanOrEqual":
+			return attrN >= valN
+		case "lessThan":
+			return attrN < valN
+		case "lessThanOrEqual":
+			return attrN <= valN
 		}
 		return false
 	default:
@@ -151,6 +224,11 @@ func clauseMatches(c model.Clause, ctx Context, segments map[string]model.Segmen
 		// as unmapped; failing closed is the safe behavior.
 		return false
 	}
+}
+
+// parseTime accepts RFC 3339 dates (LD's semantic for before/after).
+func parseTime(s string) (time.Time, error) {
+	return time.Parse(time.RFC3339, s)
 }
 
 // segmentMatches: a context is in a segment if any of the segment's rules

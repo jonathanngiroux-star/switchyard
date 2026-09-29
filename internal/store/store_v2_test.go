@@ -73,7 +73,7 @@ func openV1(t *testing.T) string {
 	return dbPath
 }
 
-func TestOpenUpgradesV1ToV2AndPreservesData(t *testing.T) {
+func TestOpenUpgradesV1ThroughV3AndPreservesData(t *testing.T) {
 	dbPath := openV1(t)
 	st, err := Open(dbPath)
 	if err != nil {
@@ -81,8 +81,8 @@ func TestOpenUpgradesV1ToV2AndPreservesData(t *testing.T) {
 	}
 	defer st.Close()
 
-	if v, _ := st.SchemaVersion(context.Background()); v != 2 {
-		t.Fatalf("schema version = %d, want 2 after migration", v)
+	if v, _ := st.SchemaVersion(context.Background()); v != 3 {
+		t.Fatalf("schema version = %d, want 3 after migration (full chain v1->v3)", v)
 	}
 	// Legacy row must survive the migration intact.
 	f, err := st.GetFlag(context.Background(), "legacy")
@@ -104,14 +104,14 @@ func TestOpenUpgradesV1ToV2AndPreservesData(t *testing.T) {
 	}
 }
 
-func TestFreshOpenIsV2(t *testing.T) {
+func TestFreshOpenIsCurrent(t *testing.T) {
 	st, err := Open(filepath.Join(t.TempDir(), "fresh.db"))
 	if err != nil {
 		t.Fatalf("open fresh: %v", err)
 	}
 	defer st.Close()
-	if v, _ := st.SchemaVersion(context.Background()); v != 2 {
-		t.Fatalf("fresh schema version = %d, want 2", v)
+	if v, _ := st.SchemaVersion(context.Background()); v != 3 {
+		t.Fatalf("fresh schema version = %d, want 3", v)
 	}
 }
 
