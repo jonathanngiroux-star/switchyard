@@ -202,13 +202,30 @@ the LaunchDarkly replacement-cost sheet: `docs/pricing.md`.
 ## Development
 
 ```bash
-go test ./...     # 21 tests across 5 packages
+go test ./...     # 22 tests across 5 packages
 go vet ./...
 gofmt -l .
 ```
 
 CI runs all three on every push and will grow the migration-fidelity gate in
 W5–7 (fails under 90%).
+
+## Support the project
+
+If Switchyard saves you a LaunchDarkly invoice or a Kubernetes weekend, tips
+are welcome. To be clear: tips are a tip jar, not the business model —
+Cloud Pro is (`docs/pricing.md`). Donations are not counted as traction
+anywhere in this project's evidence.
+
+| Network | Address |
+|---|---|
+| Ethereum — ETH and USDC (ERC-20) | `0x85ee7E71f762d772599cbF1EC20E651B30657521` |
+| Bitcoin — native SegWit (bech32) | `bc1qxe2zx5tv3hdreaej6s2x4p7han85uey828rrhg` |
+
+Both addresses passed checksum validation (EIP-55 / bech32) at commit time.
+Send only the listed assets on the listed networks, and treat any address
+that reaches you outside this README as phishing — legitimate addresses are
+only ever added via a signed commit to this file.
 
 ---
 
