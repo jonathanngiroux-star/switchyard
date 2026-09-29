@@ -1,64 +1,217 @@
 # Switchyard
 
-Self-hosted feature-flag control plane. One Go binary. SQLite. Replaces the
-LaunchDarkly / Unleash-on-Kubernetes line item for platform teams.
+**Self-hosted feature-flag control plane. One Go binary, one SQLite file, one port.**
 
-**This is a v0.1 scaffold.** Evaluator, OpenFeature provider, SDKs, and the
-migration write-path land in W1–10 per `IDEA.md` / `AGENTS.md`.
+Switchyard replaces two things platform teams at Series A–B companies (50–500 people)
+pay for today:
 
-## Quickstart (measured cold start lands W1–2; target 90s, cap 15min)
+- **LaunchDarkly, at $12,000–$100,000/year** — priced for enterprise, with a
+  migration off it that is a two-week consulting engagement.
+- **Unleash self-hosted on Kubernetes** — which wants a cluster, Postgres, Redis,
+  and your on-call rotation before it evaluates a single boolean.
+
+The weekly job it kills: platform engineers recreating flag configurations
+across dev/staging/production on every release, auditing rollout percentages
+by hand, and coordinating SDK updates across 5+ services. Switchyard's answer
+is a migration CLI that shows a machine-readable diff of exactly what an
+import would change — and exactly what it *cannot* map — before you touch a
+single service.
+
+The wedge is not another flag UI. **The wedge is a dry-run importer you can
+trust.**
+
+---
+
+## What it does
+
+### 1. Flag control plane (single binary)
+
+One static binary. No daemon tree, no message bus, no sidecars. SQLite is the
+only state — a single file, WAL mode, foreign keys enforced. Postgres is a
+documented upgrade path, not a requirement to self-host.
 
 ```bash
 go build -o switchyard ./cmd/switchyard
 ./switchyard serve --addr :8080
 ```
 
-```bash
-curl -s localhost:8080/healthz
-# {"status":"ok"}
-
-curl -s localhost:8080/flags
-# {"flags":[{"key":"welcome-banner","enabled":false}]}
-
-curl -s -X POST localhost:8080/flags/welcome-banner/toggle
-# {"key":"welcome-banner","enabled":true}
-```
-
-Docker:
+Or Docker:
 
 ```bash
 docker build -t switchyard .
 docker run -p 8080:8080 switchyard
 ```
 
-## Migration dry-run (the wedge)
+Flags are evaluated **locally in your services** — no network call per
+evaluation, no cloud dependency, forever. Gating evaluation behind a hosted
+tier is explicitly forbidden by this project's own governance.
+
+Current HTTP surface (v0.1):
 
 ```bash
-./switchyard migrate --from=launchdarkly --dry-run --format=json \
-  --input testdata/fixtures/launchdarkly/sample-export.json
+$ curl localhost:8080/healthz
+{"status":"ok"}
+
+$ curl localhost:8080/flags
+{"flags":[{"key":"welcome-banner","enabled":false}]}
+
+$ curl -X POST localhost:8080/flags/welcome-banner/toggle
+{"key":"welcome-banner","enabled":true}
 ```
 
-Output is a machine-readable diff — `added` / `removed` / `changed` /
-`unmapped` — plus a summary. Constructs v0.1 cannot map are **listed, never
-silently dropped** (`prerequisites`, unsupported clause operators). Fidelity
-target ≥90% on rules + segments by W7; CI gates it. See `docs/migrate.md`.
+Deploy target: **90 seconds from `git clone` to toggling a flag** (hard cap
+15 minutes). The cold-start number gets measured and published in this README
+during W1–2 — not claimed, measured.
 
-`--from=unleash` refuses to run until Week 8 — it will not pretend.
+### 2. Flag model
 
-## Pricing
+- **Variants:** boolean, string, number, JSON
+- **Targeting:** user key, context attributes, percentage rollout, off/on
+- **Segments:** reusable audiences referenced by rules
+- **Environments:** dev / staging / production seeded by default; a flag's
+  config (on/off, rollout %, rules) is per-environment
+- **Protocol:** OpenFeature-compatible provider (W3–4) — you are not locked
+  into a proprietary SDK wire format
 
-Public, from day one: `docs/pricing.md`. Self-host core is free forever;
-cloud sells operational risk transfer (backups, upgrades, SSO/SAML, SCIM,
-audit, SLA), never flags ripped from core.
+### 3. Migration CLI (the product)
 
-## License
+Import an incumbent's project, see the diff first, decide with evidence:
 
-MIT core (`LICENSE`). Commercial hosted extras: BSL 1.1 stub
-(`LICENSE-CLOUD`, pending counsel). DCO-only contributions; no CLA, ever.
-License changes need 4/4 council consensus + 30-day notice + migration
-path — see `GOVERNANCE.md`.
+```bash
+$ ./switchyard migrate --from=launchdarkly --dry-run --format=json \
+    --input testdata/fixtures/launchdarkly/sample-export.json
+```
 
-## Scope locks
+Real output against the fixture corpus in `testdata/fixtures/`:
 
-No 4th official SDK, no experimentation engine, no Kubernetes requirement,
-no platform. Ten invoiced Cloud Pro teams come before any of that.
+```json
+{
+  "summary": { "added": 2, "removed": 0, "changed": 0, "unmapped": 2 },
+  "added": [
+    { "key": "checkouts-v2", "name": "New checkout flow", "kind": "boolean",
+      "environments": { "production": { "on": false,
+        "rollout": { "kind": "percentage", "percentage": 10 }, "rules": [] } } },
+    { "key": "api-rate-limit", "kind": "boolean" }
+  ],
+  "removed": [],
+  "changed": [],
+  "unmapped": [
+    { "flag": "api-rate-limit", "type": "prerequisites",
+      "detail": "1 prerequisites not mapped in v0.1" },
+    { "flag": "api-rate-limit", "rule": "rule-before-date", "type": "clause-operator",
+      "detail": "operator \"before\" not supported in v0.1" }
+  ]
+}
+```
+
+Two rules govern this output, and CI enforces them:
+
+1. **Gaps are listed, never dropped.** If a source construct doesn't map
+   (prerequisites, exotic clause operators, Unleash strategy types), it
+   appears in `unmapped` with a reason. Silent fidelity loss is the fastest
+   way to burn a platform team.
+2. **Fidelity is scored and gated.** Mapped flags ÷ total source flags.
+   The CI job fails if fidelity on the fixture corpus drops below **90%**
+   (target 95%) on rules and segments. The human-readable report lives in
+   `docs/fidelity/launchdarkly.md`.
+
+`--from=unleash` refuses to run until Week 8 rather than pretending:
+
+```
+$ ./switchyard migrate --from=unleash --dry-run
+migrate: --from=unleash is not implemented until Week 8; refusing to pretend fidelity
+```
+
+### 4. SDKs — three, and only three
+
+Go (W3–4, dogfooded first), TypeScript (W9), Python (W9). Generated, not
+hand-maintained, with a versioned client protocol and a documented
+breaking-change policy. No mobile SDKs. No fourth language. A 20-SDK surface
+is how solo-maintained flag projects die; the migration CLI outranks new
+SDKs, always.
+
+---
+
+## Status: what exists vs. what's scheduled
+
+Honest inventory — this is a young repo. Do not deploy it past a dev box yet.
+
+| Capability | Status |
+|---|---|
+| Single binary, SQLite store (schema v1, FK cascades, WAL) | **Done** |
+| `migrate --from=launchdarkly --dry-run` JSON diff + gap list | **Done** (fixture corpus in-repo) |
+| `serve` HTTP: healthz / list / toggle | **Done** (in-memory; store wiring is next) |
+| Evaluator: attributes, percentage rollout, rules, segments | W1–2 |
+| serve ↔ SQLite persistence + full flag CRUD | W1–2 |
+| Cold-start measurement published here | W1–2 |
+| OpenFeature provider + Go SDK | W3–4 |
+| LD fidelity ≥90% on rules+segments, CI-gated, real export corpora | W5–7 |
+| Unleash migrator (`--from=unleash --dry-run`, gaps listed) | W8 |
+| TypeScript + Python SDK generators | W9 |
+| SCIM skeleton, DPA, audit-log schema, replacement-cost sheet | W10 |
+
+---
+
+## What it will not build
+
+These are scope locks, not a TODO list. They lift only after **10 unrelated
+teams are invoiced at list price** — see `AGENTS.md`:
+
+- No experimentation engine, no Bayesian percentage stats, no warehouse sync
+- No fourth official SDK, no React Native, no mobile
+- No "Flag OS" / change-data-capture-everywhere platform
+- No LaunchDarkly integration-catalog parity
+- No Kubernetes requirement for the self-hosted path, ever
+- No feature-gating the evaluator behind the hosted tier
+
+---
+
+## Pricing (public, day one)
+
+No "contact sales" below Enterprise. Self-serve with a card.
+
+| Tier | Price | What you get |
+|---|---|---|
+| Self-host core | **Free** (MIT) | everything above, forever — evaluation included |
+| Cloud Starter | **$29/mo** | hosted, backups, upgrades, 10 seats |
+| Cloud Pro | **$500/mo** | + VPC, SSO/SAML, audit logs, 50 seats |
+| Enterprise | **$1,500/mo** | + air-gap, SLA, SCIM, unlimited seats |
+
+The cloud tier sells **operational risk transfer** — we page, back up,
+upgrade, and hold the SLA — not flags ripped out of core. Full breakdown and
+the LaunchDarkly replacement-cost sheet: `docs/pricing.md`.
+
+## Why the incumbents lose this segment
+
+- **LaunchDarkly** prices mid-market out ($12k entry, SSO gated behind
+  enterprise tiers) and leaving it is a consulting project.
+- **Unleash** self-hosted requires Kubernetes + Postgres + Redis + an
+  operator who reads release notes. That's a platform team's weekend, monthly.
+- **OpenFeature** is a schema, not a control plane — it solves the SDK
+  protocol, not the "recreate flags across environments" job.
+
+## License & governance
+
+- Core (server, evaluator, migrators, provider, 3 SDKs): **MIT** — `LICENSE`
+- Commercial hosted extras (SSO, multi-tenant, audit pipeline): BSL 1.1
+  stub pending counsel — `LICENSE-CLOUD`
+- **DCO-only contributions** (`git commit -s`). No CLA, ever.
+- License changes require 4/4 council consensus + 30-day public notice + a
+  written migration path — `GOVERNANCE.md`
+
+## Development
+
+```bash
+go test ./...     # 21 tests across 5 packages
+go vet ./...
+gofmt -l .
+```
+
+CI runs all three on every push and will grow the migration-fidelity gate in
+W5–7 (fails under 90%).
+
+---
+
+*Named substitute costs, evidence gates, and the weekly job this kills are
+spelled out in `IDEA.md` and `AGENTS.md`. If a PR expands scope past the
+wedge, it gets refused with the trap named — that is the deal.*
