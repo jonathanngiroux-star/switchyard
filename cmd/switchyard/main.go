@@ -36,8 +36,9 @@ func main() {
 
 func run(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		usage(stderr)
-		return 2
+		// Bare `switchyard` in a terminal opens the TUI — the operator's
+		// front door. In non-TTY contexts launchTUI prints a hint instead.
+		return launchTUI(args, stdout, stderr)
 	}
 	switch args[0] {
 	case "version":
@@ -49,6 +50,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runMigrate(args[1:], stdout, stderr)
 	case "eval":
 		return runEval(args[1:], stdout, stderr)
+	case "tui":
+		return launchTUI(args[1:], stdout, stderr)
+	case "desktop":
+		return launchDesktop(args[1:], stdout, stderr)
 	case "sdk":
 		return runSDK(args[1:], stdout, stderr)
 	default:
@@ -62,6 +67,9 @@ func usage(w io.Writer) {
 	fmt.Fprintf(w, `switchyard — self-hosted feature-flag control plane
 
 Usage:
+  switchyard                      # TUI (interactive terminal)
+  switchyard tui [--db PATH]
+  switchyard desktop [--db PATH]  # Fyne GUI (desktop build: -tags fyne)
   switchyard version
   switchyard serve [--addr :8080] [--db PATH]
   switchyard eval [--env ENV] --user KEY [--db PATH] [--attr k=v ...] FLAG

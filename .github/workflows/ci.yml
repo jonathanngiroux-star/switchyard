@@ -67,3 +67,7 @@ jobs:
       # ubuntu-latest runners ship node + python3, so this runs for real in CI.
       - name: cross-language SDK conformance (Go == TypeScript == Python)
         run: go test ./cmd/switchyard/ -run TestCrossLanguageConformance -v -timeout 5m
+      # Desktop GUI: the fyne-tagged source must compile (cgo + GL on the
+      # runner). The default cgo-free build is covered by the steps above.
+      - name: desktop build compiles (fyne tag)
+        run: CGO_ENABLED=1 go build -tags fyne -o /tmp/switchyard-desktop ./cmd/switchyard

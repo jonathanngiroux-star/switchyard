@@ -29,8 +29,21 @@ trust.**
 One static binary. No daemon tree, no message bus, no sidecars. SQLite is the
 only state — a single file, WAL mode, foreign keys enforced. Postgres is a
 documented upgrade path, not a requirement to self-host. The binary also
-serves an embedded UI at `/` — list flags, toggle, switch environments,
+serves an embedded web UI at `/` — list flags, toggle, switch environments,
 see rollout percentages. No build step, no CDN.
+
+**Three control surfaces, one binary:**
+
+- **TUI** — run bare `switchyard` (or `switchyard tui`) in a terminal:
+  full-screen flag table, toggle/create/delete, rollout editing,
+  environment switching. Pure Go, ships in every binary including Docker.
+- **Web UI** — `switchyard serve`, then open `/`: same operations in a
+  browser, zero JavaScript build step.
+- **Desktop GUI** — `switchyard desktop` opens a Fyne GUI in desktop
+  builds. The default binary is cgo-free (Docker/scratch/CI); the GUI
+  ships as a separate `-tags fyne` desktop build from the same source.
+  All three surfaces share one logic layer — the TUI's model tests cover
+  the desktop's behavior too.
 
 ```bash
 go build -o switchyard ./cmd/switchyard
@@ -291,9 +304,15 @@ the LaunchDarkly replacement-cost sheet: `docs/pricing.md`.
 ## Development
 
 ```bash
-go test ./...     # 160 tests across 10 test packages
+go test ./...     # 165 tests across 10 test packages
 go vet ./...
 gofmt -l .
+```
+
+Desktop build (Fyne GUI, needs cgo + GL):
+
+```bash
+CGO_ENABLED=1 go build -tags fyne -o switchyard-desktop ./cmd/switchyard
 ```
 
 CI runs all three on every push, plus the migration-fidelity gates
