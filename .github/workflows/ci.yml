@@ -63,3 +63,7 @@ jobs:
             --format=json --fidelity-gate 0 | \
             jq -e '.fidelity.by_type | has("strategy-random-rollout") and has("strategy-unsupported") and has("constraint-operator") and has("stickiness") and has("bucketBy") and has("weighted-variants") and has("segment-missing")' \
             || (echo "::error::unleash edge corpus gap reporting regressed" && exit 1)
+      # W9: generated SDKs must stay byte-conformant with the Go evaluator.
+      # ubuntu-latest runners ship node + python3, so this runs for real in CI.
+      - name: cross-language SDK conformance (Go == TypeScript == Python)
+        run: go test ./cmd/switchyard/ -run TestCrossLanguageConformance -v -timeout 5m

@@ -50,8 +50,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	case "eval":
 		return runEval(args[1:], stdout, stderr)
 	case "sdk":
-		fmt.Fprintln(stderr, "sdk: not implemented in v0.1 (scheduled W3–4)")
-		return 1
+		return runSDK(args[1:], stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "unknown command %q\n\n", args[0])
 		usage(stderr)

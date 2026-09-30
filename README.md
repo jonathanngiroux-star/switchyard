@@ -151,11 +151,11 @@ migrate: fidelity 0.0% below gate 90.0% — refusing to pretend
 
 ### 4. SDKs — three, and only three
 
-Go (W3–4, dogfooded first), TypeScript (W9), Python (W9). Generated, not
-hand-maintained, with a versioned client protocol and a documented
-breaking-change policy. No mobile SDKs. No fourth language. A 20-SDK surface
-is how solo-maintained flag projects die; the migration CLI outranks new
-SDKs, always.
+Go (hand-written, dogfooded), TypeScript (W9, generated), Python (W9, generated).
+Generated, not hand-maintained, from a **versioned snapshot protocol**, with
+a documented breaking-change policy. No mobile SDKs. No fourth language. A
+20-SDK surface is how solo-maintained flag projects die; the migration CLI
+outranks new SDKs, always.
 
 **Go SDK — shipped.** `github.com/switchyard/switchyard/sdk` is a thin,
 snapshot-based client. Local evaluation, zero network, no store handle
@@ -184,6 +184,35 @@ enforced by a compile-time assertion and an end-to-end test through
 the caller's default with a proper `FLAG_NOT_FOUND` / `PARSE_ERROR`
 resolution error, never a wrong value.
 
+**TypeScript + Python generators — shipped.** One command snapshots the
+store and emits a self-contained client — zero dependencies, zero network
+calls, snapshot inlined:
+
+```bash
+switchyard sdk gen --lang typescript --db switchyard.db --out generated/
+switchyard sdk gen --lang python      --db switchyard.db --out generated/
+```
+
+```ts
+import { newClient } from "./generated/switchyard";
+const c = newClient();
+if (c.boolean("checkouts-v2", false, { userKey: userId })) { ... }
+```
+
+```python
+from switchyard import new_client
+c = new_client()
+if c.boolean("checkouts-v2", False, {"userKey": user_id}): ...
+```
+
+**Cross-language conformance is tested, not claimed:** the conformance suite
+generates both clients from one store and requires identical decisions to
+the Go evaluator across every path — off/on, rules, negation, segments,
+percentage rollouts (SHA-256 bucketing included — the pure-JS/Pure-Python
+implementations must reproduce Go's `binary.BigEndian.Uint64 % 100`
+exactly), typed values, and missing flags. 96 cases, three languages, one
+answer. Runs in CI when `node`/`python3` are present on the runner.
+
 ---
 
 ## Status: what exists vs. what's scheduled
@@ -201,7 +230,7 @@ Honest inventory — this is a young repo. Do not deploy it past a dev box yet.
 | OpenFeature provider (real go-sdk `FeatureProvider`, e2e-tested through `of.Client`) | **Done** (W3–4 shipped) |
 | Go SDK (`sdk/` package: snapshot client + provider) | **Done** (W3–4 shipped) |
 | Schema v2: per-environment `value` column, auto-migration from v1, data preserved | **Done** |
-| TS + Python generators | W9 (the SDK *generators*; hand-written Go SDK shipped above) |
+| TS + Python SDK generators (`sdk gen --lang typescript\|python`): zero-dep clients, versioned snapshot protocol, **96-case cross-language conformance with Go** | **Done** (W9 shipped) |
 | LD migrator: real export shapes (variations, targets, weighted rollouts, 12 operators, negation, prerequisites), fidelity scoring, CI gate ≥90%, committed report | **Done** (W5–7 shipped — `docs/fidelity/launchdarkly.md`) |
 | Unleash migrator (`--from=unleash --dry-run`): 7 strategies, 14 constraint operators, variants→values, segments by ID, 10 named gap types, CI-gated | **Done** (W8 shipped — `docs/fidelity/unleash.md`) |
 | SCIM skeleton, DPA, audit-log schema, replacement-cost sheet | W10 |
