@@ -69,7 +69,7 @@ jobs:
         run: go test ./cmd/switchyard/ -run TestCrossLanguageConformance -v -timeout 5m
       # Desktop GUI: the fyne-tagged source must compile (cgo + GL on the
       # runner). The default cgo-free build is covered by the steps above.
-      - name: install desktop build deps (X11/GL dev headers)
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libgl1-mesa-dev xorg-dev
+      - name: install desktop build deps (X11/GL/Wayland dev headers)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libgl1-mesa-dev xorg-dev libwayland-dev libxkbcommon-dev
       - name: desktop build compiles (fyne tag)
         run: CGO_ENABLED=1 go build -tags fyne -o /tmp/switchyard-desktop ./cmd/switchyard
