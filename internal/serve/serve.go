@@ -32,6 +32,9 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", s.handleHealth)
 	mux.HandleFunc("/deploy", s.handleDeploy)
+	mux.HandleFunc("/audit", func(w http.ResponseWriter, r *http.Request) {
+		s.apiAuth(http.HandlerFunc(s.handleAudit)).ServeHTTP(w, r)
+	})
 	mux.HandleFunc("/flags", func(w http.ResponseWriter, r *http.Request) {
 		s.auditMiddleware(s.apiAuth(http.HandlerFunc(s.handleFlags))).ServeHTTP(w, r)
 	})

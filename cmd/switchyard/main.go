@@ -23,7 +23,7 @@ import (
 
 // version is the single source of truth for the binary version. Overridden
 // at build time via -ldflags "-X main.version=...".
-var version = "0.1.0-dev"
+var version = "0.1.0"
 
 const (
 	defaultDBPath    = "switchyard.db"
