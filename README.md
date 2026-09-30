@@ -50,11 +50,17 @@ go build -o switchyard ./cmd/switchyard
 ./switchyard serve --addr :8080
 ```
 
+Or install the release binary (checksum-verified):
+
+```bash
+curl -fsSL https://switchyard.sh/install.sh | sh
+```
+
 Or Docker:
 
 ```bash
-docker build -t switchyard .
-docker run -p 8080:8080 switchyard
+docker run -d -p 8080:8080 -v switchyard-data:/data switchyard:v0.1.0 \
+    serve --addr :8080 --db /data/switchyard.db
 ```
 
 Flags are evaluated **locally in your services** — no network call per
