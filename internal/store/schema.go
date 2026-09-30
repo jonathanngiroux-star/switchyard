@@ -50,4 +50,21 @@ CREATE TABLE IF NOT EXISTS segments (
     name        TEXT NOT NULL DEFAULT '',
     rules       TEXT
 );
+
+-- v4: SCIM identity store. Cloud tier syncs users/groups from the
+-- customer IdP; self-host keeps the schema so upgrades are seamless.
+CREATE TABLE IF NOT EXISTS scim_users (
+    id           TEXT PRIMARY KEY,
+    user_name    TEXT NOT NULL UNIQUE,
+    display_name TEXT NOT NULL DEFAULT '',
+    email        TEXT NOT NULL DEFAULT '',
+    active       INTEGER NOT NULL DEFAULT 1,
+    raw          TEXT NOT NULL DEFAULT '{}'
+);
+CREATE TABLE IF NOT EXISTS scim_groups (
+    id           TEXT PRIMARY KEY,
+    display_name TEXT NOT NULL DEFAULT '',
+    members      TEXT NOT NULL DEFAULT '[]',
+    raw          TEXT NOT NULL DEFAULT '{}'
+);
 `

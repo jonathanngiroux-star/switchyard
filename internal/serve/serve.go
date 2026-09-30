@@ -33,6 +33,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/flags", s.handleFlags)
 	mux.HandleFunc("/flags/", s.handleFlagPath)
 	mux.HandleFunc("/evaluate/", s.handleEvaluate)
+	s.registerExtras(mux)
 	return mux
 }
 

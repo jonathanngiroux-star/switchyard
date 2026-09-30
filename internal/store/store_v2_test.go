@@ -81,8 +81,8 @@ func TestOpenUpgradesV1ThroughV3AndPreservesData(t *testing.T) {
 	}
 	defer st.Close()
 
-	if v, _ := st.SchemaVersion(context.Background()); v != 3 {
-		t.Fatalf("schema version = %d, want 3 after migration (full chain v1->v3)", v)
+	if v, _ := st.SchemaVersion(context.Background()); v != 4 {
+		t.Fatalf("schema version = %d, want 4 after migration (full chain v1->v4)", v)
 	}
 	// Legacy row must survive the migration intact.
 	f, err := st.GetFlag(context.Background(), "legacy")
@@ -110,8 +110,8 @@ func TestFreshOpenIsCurrent(t *testing.T) {
 		t.Fatalf("open fresh: %v", err)
 	}
 	defer st.Close()
-	if v, _ := st.SchemaVersion(context.Background()); v != 3 {
-		t.Fatalf("fresh schema version = %d, want 3", v)
+	if v, _ := st.SchemaVersion(context.Background()); v != 4 {
+		t.Fatalf("fresh schema version = %d, want 4", v)
 	}
 }
 

@@ -28,7 +28,9 @@ trust.**
 
 One static binary. No daemon tree, no message bus, no sidecars. SQLite is the
 only state — a single file, WAL mode, foreign keys enforced. Postgres is a
-documented upgrade path, not a requirement to self-host.
+documented upgrade path, not a requirement to self-host. The binary also
+serves an embedded UI at `/` — list flags, toggle, switch environments,
+see rollout percentages. No build step, no CDN.
 
 ```bash
 go build -o switchyard ./cmd/switchyard
@@ -233,7 +235,9 @@ Honest inventory — this is a young repo. Do not deploy it past a dev box yet.
 | TS + Python SDK generators (`sdk gen --lang typescript\|python`): zero-dep clients, versioned snapshot protocol, **96-case cross-language conformance with Go** | **Done** (W9 shipped) |
 | LD migrator: real export shapes (variations, targets, weighted rollouts, 12 operators, negation, prerequisites), fidelity scoring, CI gate ≥90%, committed report | **Done** (W5–7 shipped — `docs/fidelity/launchdarkly.md`) |
 | Unleash migrator (`--from=unleash --dry-run`): 7 strategies, 14 constraint operators, variants→values, segments by ID, 10 named gap types, CI-gated | **Done** (W8 shipped — `docs/fidelity/unleash.md`) |
-| SCIM skeleton, DPA, audit-log schema, replacement-cost sheet | W10 |
+| SCIM 2.0 provider skeleton (Users/Groups, bearer-token auth, fail-closed when unconfigured; schema v4 in every binary) | **Done** (W10 shipped) |
+| Embedded UI (list, toggle, env switch, rollout %, create) — one static page, no build step | **Done** (W10 shipped) |
+| Audit-log schema (`docs/audit-log.md`) + DPA stub (`docs/dpa.md`) + replacement-cost sheet (`docs/replacement-cost.md`) | **Done** (W10 shipped) |
 
 ---
 

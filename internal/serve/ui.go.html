@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>switchyard</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; margin: 2rem; max-width: 60rem; }
+  h1 { font-size: 1.2rem; letter-spacing: 0.1em; }
+  select, button { font: inherit; }
+  table { border-collapse: collapse; margin-top: 1rem; width: 100%; }
+  th, td { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid #8884; }
+  .on { color: #0a7; font-weight: bold; }
+  .off { color: #c44; font-weight: bold; }
+  .muted { opacity: 0.6; }
+  form { display: flex; gap: 0.5rem; margin-top: 1rem; }
+  input { font: inherit; min-width: 12rem; }
+  .err { color: #c44; margin-top: 0.75rem; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<h1>switchyard</h1>
+<p class="muted">self-hosted feature flags · environment:
+  <select id="env" onchange="reload()">
+    <option>dev</option>
+    <option>staging</option>
+    <option selected>production</option>
+  </select>
+</p>
+<table>
+  <thead><tr><th>flag</th><th>kind</th><th>state</th><th>rollout %</th><th></th></tr></thead>
+  <tbody id="rows"><tr><td colspan="5" class="muted">loading…</td></tr></tbody>
+</table>
+<form onsubmit="return createFlag(event)">
+  <input id="newkey" placeholder="new flag key" pattern="[a-zA-Z0-9._-]+" required>
+  <button>create</button>
+</form>
+<div class="err" id="err"></div>
+<script>
+async function reload() {
+  const env = document.getElementById("env").value;
+  const res = await fetch("/flags");
+  const data = await res.json();
+  const rows = document.getElementById("rows");
+  rows.innerHTML = "";
+  if (!data.flags.length) {
+    rows.innerHTML = '<tr><td colspan="5" class="muted">no flags — create one below</td></tr>';
+    return;
+  }
+  for (const f of data.flags) {
+    const fe = (f.environments || {})[env] || {on: false};
+    const pct = fe.rollout && fe.rollout.kind === "percentage" ? fe.rollout.percentage + "%" : "—";
+    const tr = document.createElement("tr");
+    tr.innerHTML =
+      "<td>" + f.key + "</td>" +
+      "<td class='muted'>" + f.kind + "</td>" +
+      "<td class='" + (fe.on ? "on" : "off") + "'>" + (fe.on ? "on" : "off") + "</td>" +
+      "<td class='muted'>" + pct + "</td>" +
+      "<td><button onclick='toggle(this, \"" + f.key + "\")'>toggle " + env + "</button></td>";
+    rows.appendChild(tr);
+  }
+}
+async function toggle(btn, key) {
+  const env = document.getElementById("env").value;
+  const res = await fetch("/flags/" + encodeURIComponent(key) + "/toggle?env=" + env, {method: "POST"});
+  if (!res.ok) { err(await res.text()); return; }
+  reload();
+}
+async function createFlag(ev) {
+  ev.preventDefault();
+  const key = document.getElementById("newkey").value;
+  const res = await fetch("/flags", {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({key: key, kind: "boolean"}),
+  });
+  if (!res.ok) { err(await res.text()); return; }
+  document.getElementById("newkey").value = "";
+  reload();
+  return false;
+}
+function err(msg) { document.getElementById("err").textContent = msg; }
+reload();
+</script>
+</body>
+</html>
