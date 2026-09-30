@@ -11,7 +11,7 @@ Binding brief: `IDEA.md`. This file is the enforcement summary. If a request fig
 - SDKs: Go, TypeScript, Python only.
 - Cloud sells operational risk transfer (VPC, SAML/SCIM, audit logs, SLA, backups, upgrades) — never flags ripped from core.
 
-## Hard scope locks (until 10 invoiced Cloud Pro / mid-tier teams)
+## Hard scope locks (until 10 unrelated teams are invoiced at list price)
 
 - No 4th official SDK. No mobile SDKs.
 - No experimentation / Bayesian stats / warehouse sync.

@@ -38,8 +38,10 @@ its skeleton and its clock. The countdown starts at the v0.1.0 release:
       pitch is the fidelity report, not the UI
 - [ ] Offer 3 design partners the migration dry-run on their real export
       (free, one command, no commitment) — the export *is* the sales call
-- [ ] Convert the best dry-run into a paid pilot at list price ($500/mo
-      Cloud Pro) by day 60
+- [ ] Convert the best dry-run into a paid hosted pilot by day 60 — this
+      requires the hosted tier to exist by then; otherwise convert into
+      design-partner LOIs with named substitute costs (their LD invoice)
+      and document the gap honestly in the pack
 - [ ] Get the first `docker run` from someone you cannot name a prior
       relationship with — that is deploy #1 that counts
 - [ ] Weekly: record distinct deploy IDs in this file's table below

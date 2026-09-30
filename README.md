@@ -28,9 +28,7 @@ trust.**
 
 One static binary. No daemon tree, no message bus, no sidecars. SQLite is the
 only state — a single file, WAL mode, foreign keys enforced. Postgres is a
-documented upgrade path, not a requirement to self-host. The binary also
-serves an embedded web UI at `/` — list flags, toggle, switch environments,
-see rollout percentages. No build step, no CDN.
+documented upgrade path, not a requirement to self-host.
 
 **Three control surfaces, one binary:**
 
@@ -40,26 +38,30 @@ see rollout percentages. No build step, no CDN.
 - **Web UI** — `switchyard serve`, then open `/`: same operations in a
   browser, zero JavaScript build step.
 - **Desktop GUI** — `switchyard desktop` opens a Fyne GUI in desktop
-  builds. The default binary is cgo-free (Docker/scratch/CI); the GUI
-  ships as a separate `-tags fyne` desktop build from the same source.
-  All three surfaces share one logic layer — the TUI's model tests cover
-  the desktop's behavior too.
+  builds (`-tags fyne`, cgo). The default binary is cgo-free so it runs
+  everywhere (Docker, scratch, CI); it explains how to get the GUI instead
+  of crashing. All three surfaces share one logic layer — the TUI's model
+  tests cover the desktop's behavior too.
+
+**Install** — latest release binary, checksum-verified:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jonathanngiroux-star/switchyard/main/scripts/install.sh | sh
+```
+
+**Or build from source** (Go 1.27+):
 
 ```bash
 go build -o switchyard ./cmd/switchyard
 ./switchyard serve --addr :8080
 ```
 
-Or install the release binary (checksum-verified):
+**Or Docker** (build locally — the image is not on a public registry yet):
 
 ```bash
-curl -fsSL https://switchyard.sh/install.sh | sh
-```
-
-Or Docker:
-
-```bash
-docker run -d -p 8080:8080 -v switchyard-data:/data switchyard:v0.1.0 \
+git clone https://github.com/jonathanngiroux-star/switchyard && cd switchyard
+docker build -t switchyard:local .
+docker run -d -p 8080:8080 -v switchyard-data:/data switchyard:local \
     serve --addr :8080 --db /data/switchyard.db
 ```
 
@@ -67,7 +69,7 @@ Flags are evaluated **locally in your services** — no network call per
 evaluation, no cloud dependency, forever. Gating evaluation behind a hosted
 tier is explicitly forbidden by this project's own governance.
 
-Current HTTP surface (v0.1, store-backed — state survives restarts):
+Current HTTP surface (v0.1.0, store-backed — state survives restarts):
 
 ```bash
 $ curl localhost:8080/healthz
@@ -77,22 +79,30 @@ $ curl -X POST localhost:8080/flags -H 'Content-Type: application/json' \
     -d '{"key":"welcome-banner","kind":"boolean"}'
 {"key":"welcome-banner","name":"","kind":"boolean","environments":{}}
 
-$ curl localhost:8080/flags
-{"flags":[{"key":"welcome-banner","name":"","kind":"boolean","environments":{}}]}
-
 $ curl -X POST localhost:8080/flags/welcome-banner/toggle     # production by default
-{"key":"welcome-banner","env":"production","enabled":true}
+{"enabled":true,"env":"production","key":"welcome-banner"}
 
 $ curl -X POST 'localhost:8080/evaluate/welcome-banner?env=production' \
     -d '{"userKey":"alice"}'
-{"enabled":true,"reason":"fallthrough"}
+{"enabled":true,"value":true,"variant":"on","reason":"fallthrough"}
+
+$ curl localhost:8080/audit                                   # append-only mutation log
+{"entries":[{"id":1,"ts":"2026-09-30T16:24:52Z","actor":"anonymous","action":"create",
+  "resource":"flag","key":"welcome-banner","after":"{\"key\":\"welcome-banner\",...}"},
+ {"id":2,"ts":"...","actor":"anonymous","action":"toggle","key":"welcome-banner",
+  "env":"production","before":"{\"on\":false}","after":"{\"on\":true}"}]}
 ```
+
+`?format=csv` on `/audit` streams a quoted CSV download. Set
+`SWITCHYARD_API_TOKEN` to require `Authorization: Bearer <token>` on the
+API; set `SWITCHYARD_SCIM_TOKEN` to mount the SCIM 2.0 endpoint. Both stay
+unauthenticated-but-localhost-only when unset — documented, not accidental.
 
 And from the same binary, without the server running:
 
 ```bash
 $ switchyard eval --env production --user alice welcome-banner --db switchyard.db
-{"enabled":true,"reason":"fallthrough"}
+{"enabled":true,"value":true,"variant":"on","reason":"fallthrough"}
 ```
 
 Deploy target: **90 seconds from `git clone` to toggling a flag** (hard cap
@@ -114,9 +124,11 @@ The real budget goes to `go build` (~30s on a laptop) or the first
 - **Variants:** boolean, string, number, JSON
 - **Targeting:** user key, context attributes, percentage rollout, off/on
 - **Segments:** reusable audiences referenced by rules
+- **Prerequisites:** a flag serves only when its parent flag is on
+  (enforced, cycle-safe, depth-limited)
 - **Environments:** dev / staging / production seeded by default; a flag's
   config (on/off, rollout %, rules) is per-environment
-- **Protocol:** OpenFeature-compatible provider (W3–4) — you are not locked
+- **Protocol:** OpenFeature-compatible provider — you are not locked
   into a proprietary SDK wire format
 
 ### 3. Migration CLI (the product)
@@ -124,59 +136,42 @@ The real budget goes to `go build` (~30s on a laptop) or the first
 Import an incumbent's project, see the diff first, decide with evidence:
 
 ```bash
-$ ./switchyard migrate --from=launchdarkly --dry-run --format=json \
+$ switchyard migrate --from=launchdarkly --dry-run \
     --input testdata/fixtures/launchdarkly/sample-export.json
+default (Default Project): 2 flags, 1 segments, 3 envs
+summary: 2 added, 0 removed, 0 changed, 0 unmapped
 ```
 
-Real output against the fixture corpus in `testdata/fixtures/`:
-
-```json
-{
-  "summary": { "added": 2, "removed": 0, "changed": 0, "unmapped": 2 },
-  "added": [
-    { "key": "checkouts-v2", "name": "New checkout flow", "kind": "boolean",
-      "environments": { "production": { "on": false,
-        "rollout": { "kind": "percentage", "percentage": 10 }, "rules": [] } } },
-    { "key": "api-rate-limit", "kind": "boolean" }
-  ],
-  "removed": [],
-  "changed": [],
-  "unmapped": [
-    { "flag": "api-rate-limit", "type": "prerequisites",
-      "detail": "1 prerequisites not mapped in v0.1" },
-    { "flag": "api-rate-limit", "rule": "rule-before-date", "type": "clause-operator",
-      "detail": "operator \"before\" not supported in v0.1" }
-  ]
-}
-```
-
-Two rules govern this output, and CI enforces them:
+`--format=json` emits the machine-readable diff — `added` / `removed` /
+`changed` / `unmapped` per flag, plus a `fidelity` object with the score
+and gap breakdown. Two rules govern this output, and CI enforces them:
 
 1. **Gaps are listed, never dropped.** If a source construct doesn't map
-   (prerequisites, exotic clause operators, Unleash strategy types), it
-   appears in `unmapped` with a reason. Silent fidelity loss is the fastest
-   way to burn a platform team.
-2. **Fidelity is scored and gated.** Mapped flags ÷ total source flags.
-   The CI job fails if fidelity on the fixture corpus drops below **90%**
-   (target 95%) on rules and segments. The human-readable report lives in
-   `docs/fidelity/launchdarkly.md`.
+   (weighted multi-variant rollouts, unsupported operators, big segments),
+   it appears in `unmapped` with a reason. Silent fidelity loss is the
+   fastest way to burn a platform team.
+2. **Fidelity is scored and gated.** Fully-mapped flags ÷ total source
+   flags. The CI job fails if fidelity on the representative corpus drops
+   below **90%**. The human-readable reports are committed and
+   CI-checked for staleness: `docs/fidelity/launchdarkly.md`,
+   `docs/fidelity/unleash.md`.
 
-`--from=unleash` is shipped with the same contract: representative corpus
-CI-gated, edge corpus unmappable-by-design with every gap named. A corpus
-below the fidelity gate refuses to import rather than pretending:
+`--from=unleash` ships the same contract: representative corpus CI-gated,
+edge corpus unmappable-by-design with every gap named. A corpus below the
+fidelity gate refuses to import rather than pretending:
 
 ```
-$ ./switchyard migrate --from=unleash --dry-run --input edge-corpus.json
+$ switchyard migrate --from=unleash --dry-run --input edge-corpus.json
 migrate: fidelity 0.0% below gate 90.0% — refusing to pretend
 ```
 
 ### 4. SDKs — three, and only three
 
-Go (hand-written, dogfooded), TypeScript (W9, generated), Python (W9, generated).
-Generated, not hand-maintained, from a **versioned snapshot protocol**, with
-a documented breaking-change policy. No mobile SDKs. No fourth language. A
-20-SDK surface is how solo-maintained flag projects die; the migration CLI
-outranks new SDKs, always.
+Go (hand-written, dogfooded), TypeScript and Python (generated). Generated
+from a **versioned snapshot protocol**, with a documented breaking-change
+policy. No mobile SDKs. No fourth language. A 20-SDK surface is how
+solo-maintained flag projects die; the migration CLI outranks new SDKs,
+always.
 
 **Go SDK — shipped.** `github.com/switchyard/switchyard/sdk` is a thin,
 snapshot-based client. Local evaluation, zero network, no store handle
@@ -236,58 +231,71 @@ answer. Runs in CI when `node`/`python3` are present on the runner.
 
 ---
 
-## Status: what exists vs. what's scheduled
+## Status: what exists
 
-Honest inventory — this is a young repo. Do not deploy it past a dev box yet.
+Everything below is shipped in v0.1.0 and covered by tests or CI gates:
 
 | Capability | Status |
 |---|---|
-| Single binary, SQLite store (schema v1, FK cascades, WAL) | **Done** |
-| `migrate --from=launchdarkly --dry-run` JSON diff + gap list | **Done** (fixture corpus in-repo) |
-| `serve` HTTP: healthz / list / create / update / delete / toggle, store-backed, persistent across restarts | **Done** |
-| Evaluator: attributes, percentage rollout, rules, segments — **with variant values (string/number/JSON)** | **Done** (W1–2 + W3–4 value layer) |
-| `switchyard eval` CLI: local evaluation with `--user`/`--attr` context | **Done** |
-| Cold-start measurement published here | **Done** — see table above |
-| OpenFeature provider (real go-sdk `FeatureProvider`, e2e-tested through `of.Client`) | **Done** (W3–4 shipped) |
-| Go SDK (`sdk/` package: snapshot client + provider) | **Done** (W3–4 shipped) |
-| Schema v2: per-environment `value` column, auto-migration from v1, data preserved | **Done** |
-| TS + Python SDK generators (`sdk gen --lang typescript\|python`): zero-dep clients, versioned snapshot protocol, **96-case cross-language conformance with Go** | **Done** (W9 shipped) |
-| LD migrator: real export shapes (variations, targets, weighted rollouts, 12 operators, negation, prerequisites), fidelity scoring, CI gate ≥90%, committed report | **Done** (W5–7 shipped — `docs/fidelity/launchdarkly.md`) |
-| Unleash migrator (`--from=unleash --dry-run`): 7 strategies, 14 constraint operators, variants→values, segments by ID, 10 named gap types, CI-gated | **Done** (W8 shipped — `docs/fidelity/unleash.md`) |
-| SCIM 2.0 provider skeleton (Users/Groups, bearer-token auth, fail-closed when unconfigured; schema v4 in every binary) | **Done** (W10 shipped) |
-| Embedded UI (list, toggle, env switch, rollout %, create) — one static page, no build step | **Done** (W10 shipped) |
-| Audit-log schema (`docs/audit-log.md`) + DPA stub (`docs/dpa.md`) + replacement-cost sheet (`docs/replacement-cost.md`) | **Done** (W10 shipped) |
+| Single binary, SQLite (schema v5, auto-migration from every prior version, FK cascades, WAL) | **Done** |
+| `serve` HTTP: CRUD, toggle, evaluate, audit — store-backed, persistent across restarts | **Done** |
+| Evaluator: 12 operators, negation, segments, percentage rollouts, variant values, prerequisite enforcement (cycle-safe) | **Done** |
+| TUI (bare `switchyard`), embedded web UI, Fyne desktop GUI (`-tags fyne`) | **Done** |
+| `migrate --from=launchdarkly --dry-run`: real export shapes, fidelity score, CI gate ≥90%, committed report | **Done** |
+| `migrate --from=unleash --dry-run`: 7 strategies, 14 constraint operators, 10 named gap types, CI-gated | **Done** |
+| SDKs: Go (+ real OpenFeature provider), generated TS + Python, 96-case cross-language conformance | **Done** |
+| SCIM 2.0 skeleton (Users/Groups, bearer token, fail-closed unconfigured) | **Done** |
+| API auth (`SWITCHYARD_API_TOKEN`), audit log on every mutation, `GET /audit` JSON/CSV | **Done** |
+| Stable deploy IDs (`GET /deploy`) for the evidence loop | **Done** |
+| Procurement docs: audit schema, DPA stub, replacement-cost sheet | **Done** |
+
+**What is deliberately not built** (scope locks — see `AGENTS.md`):
+experimentation/Bayesian stats, a fourth SDK, mobile SDKs, "Flag OS",
+Kubernetes requirements, and any gating of evaluation behind a hosted tier.
+The locks lift only after 10 unrelated teams are invoiced at list price.
+
+**Known gaps, stated plainly:** weighted multi-variant rollouts map to the
+dominant variant only (gap reported); LD big-segment membership is imported
+as a gap; SDKs are snapshot-based — regenerate on deploy (no streaming
+updates yet). The fidelity reports are the authoritative gap lists.
 
 ---
 
-## What it will not build
+## Funding and roadmap
 
-These are scope locks, not a TODO list. They lift only after **10 unrelated
-teams are invoiced at list price** — see `AGENTS.md`:
+**There is no hosted tier, no billing, and no company today.** Switchyard
+is a self-hosted, MIT-licensed project funded by crypto tips. The hosted
+tiers below are the *planned* revenue path for when a hosted offering
+exists — nothing here is purchasable yet, and we will not invoice anyone
+before the service is real.
 
-- No experimentation engine, no Bayesian percentage stats, no warehouse sync
-- No fourth official SDK, no React Native, no mobile
-- No "Flag OS" / change-data-capture-everywhere platform
-- No LaunchDarkly integration-catalog parity
-- No Kubernetes requirement for the self-hosted path, ever
-- No feature-gating the evaluator behind the hosted tier
+| Tier (planned) | What it would sell |
+|---|---|
+| Hosted Starter | we host it, back it up, upgrade it — you stop running it |
+| Hosted Pro | + VPC, SSO/SAML, audit streaming, more seats |
+| Enterprise | + air-gap, SLA, SCIM-in-production |
+
+The pitch stays the same as it has always been: a hosted tier would sell
+**operational risk transfer** — we page, back up, upgrade, and hold the SLA
+— never flags ripped out of the self-hosted core.
+
+### Support the project
+
+If Switchyard saves you a LaunchDarkly invoice or a Kubernetes weekend,
+tips are welcome. To be clear: tips are a tip jar, not the business model.
+Tips are not counted as traction anywhere in this project's evidence.
+
+| Network | Address |
+|---|---|
+| Ethereum — ETH and USDC (ERC-20) | `0x85ee7E71f762d772599cbF1EC20E651B30657521` |
+| Bitcoin — native SegWit (bech32) | `bc1qxe2zx5tv3hdreaej6s2x4p7han85uey828rrhg` |
+
+Both addresses passed checksum validation (EIP-55 / bech32) at commit
+time. Send only the listed assets on the listed networks, and treat any
+address that reaches you outside this README as phishing — legitimate
+addresses are only ever added via a signed commit to this file.
 
 ---
-
-## Pricing (public, day one)
-
-No "contact sales" below Enterprise. Self-serve with a card.
-
-| Tier | Price | What you get |
-|---|---|---|
-| Self-host core | **Free** (MIT) | everything above, forever — evaluation included |
-| Cloud Starter | **$29/mo** | hosted, backups, upgrades, 10 seats |
-| Cloud Pro | **$500/mo** | + VPC, SSO/SAML, audit logs, 50 seats |
-| Enterprise | **$1,500/mo** | + air-gap, SLA, SCIM, unlimited seats |
-
-The cloud tier sells **operational risk transfer** — we page, back up,
-upgrade, and hold the SLA — not flags ripped out of core. Full breakdown and
-the LaunchDarkly replacement-cost sheet: `docs/pricing.md`.
 
 ## Why the incumbents lose this segment
 
@@ -301,8 +309,7 @@ the LaunchDarkly replacement-cost sheet: `docs/pricing.md`.
 ## License & governance
 
 - Core (server, evaluator, migrators, provider, 3 SDKs): **MIT** — `LICENSE`
-- Commercial hosted extras (SSO, multi-tenant, audit pipeline): BSL 1.1
-  stub pending counsel — `LICENSE-CLOUD`
+- Commercial hosted extras: BSL 1.1 stub pending counsel — `LICENSE-CLOUD`
 - **DCO-only contributions** (`git commit -s`). No CLA, ever.
 - License changes require 4/4 council consensus + 30-day public notice + a
   written migration path — `GOVERNANCE.md`
@@ -310,7 +317,7 @@ the LaunchDarkly replacement-cost sheet: `docs/pricing.md`.
 ## Development
 
 ```bash
-go test ./...     # 165 tests across 10 test packages
+go test ./...     # 168 tests across 10 test packages
 go vet ./...
 gofmt -l .
 ```
@@ -322,32 +329,17 @@ CGO_ENABLED=1 go build -tags fyne -o switchyard-desktop ./cmd/switchyard
 ```
 
 CI runs all three on every push, plus the migration-fidelity gates
-(LD + Unleash, ≥90% with committed reports checked for staleness) and the
-96-case cross-language SDK conformance suite.
+(LD + Unleash, ≥90% with committed reports checked for staleness), the
+96-case cross-language SDK conformance suite, and a compile check of the
+fyne desktop build.
 
 ## Evidence, not vanity
 
 What gets counted and how is documented in `docs/evidence.md` — deploy IDs
 (not stars), migration fidelity (CI-gated, not claimed), and opt-out via
 `SWITCHYARD_NO_TELEMETRY=1`. The evaluation path has zero network calls,
-by design and by test.
-
-## Support the project
-
-If Switchyard saves you a LaunchDarkly invoice or a Kubernetes weekend, tips
-are welcome. To be clear: tips are a tip jar, not the business model —
-Cloud Pro is (`docs/pricing.md`). Donations are not counted as traction
-anywhere in this project's evidence.
-
-| Network | Address |
-|---|---|
-| Ethereum — ETH and USDC (ERC-20) | `0x85ee7E71f762d772599cbF1EC20E651B30657521` |
-| Bitcoin — native SegWit (bech32) | `bc1qxe2zx5tv3hdreaej6s2x4p7han85uey828rrhg` |
-
-Both addresses passed checksum validation (EIP-55 / bech32) at commit time.
-Send only the listed assets on the listed networks, and treat any address
-that reaches you outside this README as phishing — legitimate addresses are
-only ever added via a signed commit to this file.
+by design and by test. The 90-day evidence-pack clock and founder
+checklist live in `docs/90-day-pack.md`.
 
 ---
 
