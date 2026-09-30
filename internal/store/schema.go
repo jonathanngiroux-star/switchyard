@@ -67,4 +67,25 @@ CREATE TABLE IF NOT EXISTS scim_groups (
     members      TEXT NOT NULL DEFAULT '[]',
     raw          TEXT NOT NULL DEFAULT '{}'
 );
+
+-- v5: append-only audit log (docs/audit-log.md schema v1) and
+-- instance metadata (stable deploy ID for the evidence loop).
+CREATE TABLE IF NOT EXISTS audit_log (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts          TEXT NOT NULL,
+    actor       TEXT NOT NULL,
+    action      TEXT NOT NULL,
+    resource    TEXT NOT NULL,
+    key         TEXT NOT NULL,
+    env         TEXT,
+    before      TEXT,
+    after       TEXT,
+    request_id  TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_log(ts);
+CREATE INDEX IF NOT EXISTS idx_audit_resource ON audit_log(resource, key);
+CREATE TABLE IF NOT EXISTS instance_meta (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 `

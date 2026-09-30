@@ -26,7 +26,7 @@ const (
 
 	// schemaVersion is the current schema version, stored in PRAGMA
 	// user_version. v2 adds the `value` column to flag_environments.
-	schemaVersion = 4
+	schemaVersion = 5
 )
 
 // Store wraps the SQLite handle.

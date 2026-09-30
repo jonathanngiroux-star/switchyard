@@ -48,9 +48,10 @@ CREATE INDEX IF NOT EXISTS idx_audit_resource ON audit_log(resource, key);
 4. **No PII beyond identifiers.** SCIM `raw` payloads are stored in the
    SCIM tables, not duplicated into audit rows; audit carries only ids.
 
-## Current status (v0.1)
+## Current status (v0.1) — shipped
 
-The schema above ships with the cloud tier design; the self-hosted binary
-lands the write path in the next slice (`serve` middleware writing one row
-per mutation). When it ships, this document is the contract — consumers
-build SIEM mappings against it now.
+The write path is live: every mutating request (flag create/update/delete,
+environment toggle, SCIM provisioning) writes exactly one append-only row
+with full before/after snapshots. The middleware owns the write — handlers
+declare what changed; failed requests write nothing; reads write nothing.
+`GET /audit` (cloud tier) reads the same table this document defines.

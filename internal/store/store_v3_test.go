@@ -69,8 +69,8 @@ func TestOpenUpgradesV2ToV3PreservingData(t *testing.T) {
 	}
 	defer st2.Close()
 	ctx := context.Background()
-	if v, _ := st2.SchemaVersion(ctx); v != 4 {
-		t.Fatalf("schema version = %d, want 4 after upgrade", v)
+	if v, _ := st2.SchemaVersion(ctx); v != 5 {
+		t.Fatalf("schema version = %d, want 5 after upgrade", v)
 	}
 	f, err := st2.GetFlag(ctx, "legacy")
 	if err != nil {
@@ -95,7 +95,7 @@ func TestFreshDatabaseIsV3(t *testing.T) {
 		t.Fatalf("open: %v", err)
 	}
 	defer st.Close()
-	if v, _ := st.SchemaVersion(context.Background()); v != 4 {
-		t.Fatalf("fresh schema version = %d, want 4", v)
+	if v, _ := st.SchemaVersion(context.Background()); v != 5 {
+		t.Fatalf("fresh schema version = %d, want 5", v)
 	}
 }

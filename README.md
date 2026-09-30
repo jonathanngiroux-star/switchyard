@@ -291,13 +291,21 @@ the LaunchDarkly replacement-cost sheet: `docs/pricing.md`.
 ## Development
 
 ```bash
-go test ./...     # 22 tests across 5 packages
+go test ./...     # 160 tests across 10 test packages
 go vet ./...
 gofmt -l .
 ```
 
-CI runs all three on every push and will grow the migration-fidelity gate in
-W5–7 (fails under 90%).
+CI runs all three on every push, plus the migration-fidelity gates
+(LD + Unleash, ≥90% with committed reports checked for staleness) and the
+96-case cross-language SDK conformance suite.
+
+## Evidence, not vanity
+
+What gets counted and how is documented in `docs/evidence.md` — deploy IDs
+(not stars), migration fidelity (CI-gated, not claimed), and opt-out via
+`SWITCHYARD_NO_TELEMETRY=1`. The evaluation path has zero network calls,
+by design and by test.
 
 ## Support the project
 

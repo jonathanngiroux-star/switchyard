@@ -141,7 +141,17 @@ func runEval(args []string, stdout, stderr io.Writer) int {
 	for _, sg := range segs {
 		segMap[sg.Key] = sg
 	}
-	d := eval.Evaluate(f, *env, segMap, eval.Context{UserKey: *user, Attributes: attrs})
+	// Prerequisites: load the sibling flag set and enforce (default depth).
+	allFlags, err := st.ListFlags(context.Background())
+	if err != nil {
+		fmt.Fprintf(stderr, "eval: %v\n", err)
+		return 1
+	}
+	flagMap := make(map[string]model.Flag, len(allFlags))
+	for _, af := range allFlags {
+		flagMap[af.Key] = af
+	}
+	d := eval.EvaluateWithPrereqs(f, *env, segMap, eval.Context{UserKey: *user, Attributes: attrs}, flagMap, -1)
 	if err := json.NewEncoder(stdout).Encode(d); err != nil {
 		fmt.Fprintf(stderr, "eval: encode: %v\n", err)
 		return 1

@@ -4,6 +4,7 @@
 package serve
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -30,11 +31,29 @@ func New(st *store.Store) *Server {
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", s.handleHealth)
-	mux.HandleFunc("/flags", s.handleFlags)
-	mux.HandleFunc("/flags/", s.handleFlagPath)
-	mux.HandleFunc("/evaluate/", s.handleEvaluate)
+	mux.HandleFunc("/deploy", s.handleDeploy)
+	mux.HandleFunc("/flags", func(w http.ResponseWriter, r *http.Request) {
+		s.auditMiddleware(s.apiAuth(http.HandlerFunc(s.handleFlags))).ServeHTTP(w, r)
+	})
+	mux.HandleFunc("/flags/", func(w http.ResponseWriter, r *http.Request) {
+		s.auditMiddleware(s.apiAuth(http.HandlerFunc(s.handleFlagPath))).ServeHTTP(w, r)
+	})
+	mux.HandleFunc("/evaluate/", func(w http.ResponseWriter, r *http.Request) {
+		s.apiAuth(http.HandlerFunc(s.handleEvaluate)).ServeHTTP(w, r)
+	})
 	s.registerExtras(mux)
 	return mux
+}
+
+// handleDeploy returns the stable deploy ID + version — the evidence
+// loop's distinguisher between real deploys and repeated healthz curls.
+func (s *Server) handleDeploy(w http.ResponseWriter, _ *http.Request) {
+	id, err := s.st.EnsureDeployID(context.Background())
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"deploy_id": id, "version": "0.1.0"})
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
@@ -74,6 +93,10 @@ func (s *Server) handleFlags(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusInternalServerError, err)
 			return
 		}
+		recordAudit(r, storeAudit{
+			Actor: currentActor(r), Action: "create", Resource: "flag",
+			Key: f.Key, Before: "", After: jsonString(f),
+		})
 		writeJSON(w, http.StatusCreated, f)
 	default:
 		writeErrMsg(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -116,12 +139,18 @@ func (s *Server) handleFlag(w http.ResponseWriter, r *http.Request, key string) 
 		if f.Environments == nil {
 			f.Environments = map[string]model.FlagEnvironment{}
 		}
+		before, _ := s.st.GetFlag(r.Context(), key)
 		if err := s.st.PutFlag(r.Context(), f); err != nil {
 			writeErr(w, http.StatusInternalServerError, err)
 			return
 		}
+		recordAudit(r, storeAudit{
+			Actor: currentActor(r), Action: "update", Resource: "flag",
+			Key: key, Before: jsonString(before), After: jsonString(f),
+		})
 		writeJSON(w, http.StatusOK, f)
 	case http.MethodDelete:
+		before, _ := s.st.GetFlag(r.Context(), key)
 		if err := s.st.DeleteFlag(r.Context(), key); err == store.ErrNotFound {
 			writeErrMsg(w, http.StatusNotFound, "flag not found")
 			return
@@ -129,6 +158,10 @@ func (s *Server) handleFlag(w http.ResponseWriter, r *http.Request, key string) 
 			writeErr(w, http.StatusInternalServerError, err)
 			return
 		}
+		recordAudit(r, storeAudit{
+			Actor: currentActor(r), Action: "delete", Resource: "flag",
+			Key: key, Before: jsonString(before), After: "",
+		})
 		writeJSON(w, http.StatusOK, map[string]string{"deleted": key})
 	default:
 		writeErrMsg(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -156,11 +189,16 @@ func (s *Server) handleToggle(w http.ResponseWriter, r *http.Request, key string
 		return
 	}
 	fe := f.Environments[env] // zero value: off, no rules
+	beforeSnapshot := jsonString(fe)
 	fe.On = !fe.On
 	if err := s.st.SetFlagEnvironment(r.Context(), key, env, fe); err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
+	recordAudit(r, storeAudit{
+		Actor: currentActor(r), Action: "toggle", Resource: "flag",
+		Key: key, Env: env, Before: beforeSnapshot, After: jsonString(fe),
+	})
 	writeJSON(w, http.StatusOK, map[string]any{"key": key, "env": env, "enabled": fe.On})
 }
 
@@ -203,7 +241,17 @@ func (s *Server) handleEvaluate(w http.ResponseWriter, r *http.Request) {
 	for _, seg := range segs {
 		segMap[seg.Key] = seg
 	}
-	d := eval.Evaluate(f, env, segMap, ctx)
+	// Prerequisites: load the sibling flag set and enforce (default depth).
+	allFlags, err := s.st.ListFlags(r.Context())
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	flagMap := make(map[string]model.Flag, len(allFlags))
+	for _, af := range allFlags {
+		flagMap[af.Key] = af
+	}
+	d := eval.EvaluateWithPrereqs(f, env, segMap, ctx, flagMap, -1)
 	writeJSON(w, http.StatusOK, d)
 }
 
