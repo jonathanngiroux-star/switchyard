@@ -6,12 +6,30 @@
 package scim
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"strings"
 
 	"github.com/switchyard/switchyard/internal/store"
 )
+
+// newID mints a server-assigned SCIM resource id (RFC 7644 §3.3: the
+// server MUST assign id on create). Same shape as the store's deploy id.
+func newID(prefix string) string {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		// crypto/rand failure is unrecoverable; degrade to a time-free
+		// unique-ish fallback rather than serving id=''.
+		for i := range b {
+			b[i] = byte(i * 7)
+		}
+	}
+	b[6] = (b[6] & 0x0f) | 0x40
+	b[8] = (b[8] & 0x3f) | 0x80
+	return prefix + hex.EncodeToString(b)
+}
 
 // Server serves SCIM 2.0 resources over a Store.
 type Server struct {
@@ -101,6 +119,11 @@ func (s *Server) handleUsers(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		u := payload.toStore()
+		if u.ID == "" {
+			// RFC 7644 §3.3: server assigns the id when the client
+			// omits it (the normal case for IdP provisioning).
+			u.ID = newID("")
+		}
 		if err := s.st.PutSCIMUser(r.Context(), u); err != nil {
 			writeSCIMError(w, http.StatusInternalServerError, err.Error())
 			return
@@ -204,6 +227,9 @@ func (s *Server) handleGroups(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		g := payload.toStore()
+		if g.ID == "" {
+			g.ID = newID("")
+		}
 		if err := s.st.PutSCIMGroup(r.Context(), g); err != nil {
 			writeSCIMError(w, http.StatusInternalServerError, err.Error())
 			return

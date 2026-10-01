@@ -26,9 +26,22 @@ import (
 var version = "0.1.0"
 
 const (
-	defaultDBPath    = "switchyard.db"
-	defaultLDFixture = "testdata/fixtures/launchdarkly/sample-export.json"
+	defaultDBPath = "switchyard.db"
+	// Defaults live in defaultInputFor so --input default always matches
+	// --from. A single LD fixture as the universal default made
+	// `migrate --from=unleash` silently parse the LD export and report
+	// an empty diff at "100%" fidelity.
 )
+
+// defaultInputFor returns the fixture path used when --input is omitted.
+func defaultInputFor(from string) string {
+	switch from {
+	case "unleash":
+		return "testdata/fixtures/unleash/unleash-representative.json"
+	default:
+		return "testdata/fixtures/launchdarkly/sample-export.json"
+	}
+}
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
@@ -192,7 +205,7 @@ func runMigrate(args []string, stdout, stderr io.Writer) int {
 	from := fs.String("from", "", "source system: launchdarkly|unleash")
 	dryRun := fs.Bool("dry-run", false, "print what an import would change (v0.1 is dry-run only)")
 	format := fs.String("format", "human", "output format: human|json")
-	input := fs.String("input", defaultLDFixture, "path to the source export file")
+	input := fs.String("input", "", "path to the source export file (default: source-specific fixture)")
 	fidelityPath := fs.String("fidelity", "", "write the human-readable fidelity report to this path")
 	fidelityGate := fs.Float64("fidelity-gate", 0.9, "minimum fidelity score; exit 1 below (CI gate)")
 	if err := fs.Parse(args); err != nil {
@@ -220,6 +233,9 @@ func runMigrate(args []string, stdout, stderr io.Writer) int {
 	default:
 		fmt.Fprintf(stderr, "migrate: unknown --from %q (launchdarkly|unleash)\n", *from)
 		return 1
+	}
+	if *input == "" {
+		*input = defaultInputFor(*from)
 	}
 
 	data, err := os.ReadFile(*input)

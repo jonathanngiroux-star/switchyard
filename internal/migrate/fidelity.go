@@ -53,10 +53,12 @@ func FidelityReport(sourceName string, source []model.Project, unmapped []Unmapp
 }
 
 // computeScore sets the Score field, fully-mapped / total, 0..1.
-// Zero flags = 1.0 (nothing to lose).
+// Zero flags = 0.0. An empty corpus (a wrong-format export parsed by
+// the wrong importer, or an empty project) is a failed migration, not
+// a perfect one — the honesty contract refuses to pretend.
 func (r *Report) computeScore() {
 	if r.TotalFlags == 0 {
-		r.Score = 1.0
+		r.Score = 0.0
 		return
 	}
 	r.Score = float64(r.FullyMappedFlags) / float64(r.TotalFlags)

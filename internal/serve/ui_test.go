@@ -74,6 +74,41 @@ func TestEmbeddedUIIsServed(t *testing.T) {
 	}
 }
 
+// The UI must escape every value interpolated into innerHTML. A flag
+// key arriving from the API (or a stale store from before server-side
+// validation) must never reach the DOM as markup. This pins the
+// escaping calls; key_validation_test.go pins the API boundary.
+func TestEmbeddedUIEscapesInterpolatedValues(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "ui3.db")
+	st, err := store.Open(dbPath)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer st.Close()
+	h := New(st).Handler()
+
+	rr := httptest.NewRequest(http.MethodGet, "/", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, rr)
+	body := w.Body.String()
+	for _, want := range []string{
+		"function esc(s)",
+		"esc(f.key)",
+		"esc(f.kind)",
+		"JSON.stringify(f.key)",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("UI missing %q — escaping regressed", want)
+		}
+	}
+	// The pre-fix UI interpolated raw keys ("..." + f.key + "..."); no
+	// bare "+ f.key" may remain anywhere — esc( and JSON.stringify(
+	// are the only sanctioned uses of f.key.
+	if strings.Contains(body, "+ f.key") {
+		t.Fatal("UI still interpolates raw f.key")
+	}
+}
+
 func TestUICanToggleThroughAPI(t *testing.T) {
 	// The UI is a static page over the JSON API; this pins the API the UI
 	// depends on: create, toggle, list.

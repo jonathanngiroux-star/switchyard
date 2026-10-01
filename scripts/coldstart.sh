@@ -3,6 +3,13 @@
 # Prints wall-clock seconds for each phase. Run: bash scripts/coldstart.sh [path-to-binary]
 set -u
 BIN="${1:-./switchyard}"
+# Resolve to an absolute path BEFORE cd — the script cds into a fresh
+# temp dir, so a relative BIN (the default) would not exist there.
+case "$BIN" in
+    /*) ;;
+    *) BIN="$(cd "$(dirname "$BIN")" && pwd)/$(basename "$BIN")" ;;
+esac
+[ -x "$BIN" ] || { echo "FATAL: binary not found: $BIN"; exit 1; }
 PORT=19081
 D=$(mktemp -d)
 cd "$D" || exit 1

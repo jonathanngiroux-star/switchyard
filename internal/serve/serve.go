@@ -8,11 +8,34 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"unicode"
 
 	"github.com/switchyard/switchyard/internal/eval"
 	"github.com/switchyard/switchyard/internal/model"
 	"github.com/switchyard/switchyard/internal/store"
 )
+
+// validKey enforces the flag-key alphabet server-side: [a-zA-Z0-9._-]+.
+// The embedded UI's input pattern is the same contract; client-side
+// patterns are not a security boundary, so the API must enforce it —
+// otherwise hostile keys round-trip into the UI's innerHTML (stored
+// XSS) and into URL paths.
+func validKey(key string) bool {
+	if key == "" {
+		return false
+	}
+	for _, r := range key {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+		case r == '.', r == '_', r == '-':
+		case unicode.IsSpace(r):
+			return false
+		default:
+			return false
+		}
+	}
+	return true
+}
 
 // Server serves the control-plane API over a Store.
 type Server struct {
@@ -82,6 +105,10 @@ func (s *Server) handleFlags(w http.ResponseWriter, r *http.Request) {
 			writeErrMsg(w, http.StatusBadRequest, "key is required")
 			return
 		}
+		if !validKey(f.Key) {
+			writeErrMsg(w, http.StatusBadRequest, "invalid flag key: use letters, digits, '.', '_', '-'")
+			return
+		}
 		if f.Environments == nil {
 			f.Environments = map[string]model.FlagEnvironment{}
 		}
@@ -121,6 +148,10 @@ func (s *Server) handleFlagPath(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleFlag(w http.ResponseWriter, r *http.Request, key string) {
+	if !validKey(key) {
+		writeErrMsg(w, http.StatusBadRequest, "invalid flag key: use letters, digits, '.', '_', '-'")
+		return
+	}
 	switch r.Method {
 	case http.MethodGet:
 		f, err := s.st.GetFlag(r.Context(), key)

@@ -38,9 +38,13 @@
 </form>
 <div class="err" id="err"></div>
 <script>
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, c => "&" + ({ "&": "amp", "<": "lt", ">": "gt", '"': "quot", "'": "#39" })[c] + ";");
+}
 async function reload() {
   const env = document.getElementById("env").value;
   const res = await fetch("/flags");
+  if (!res.ok) { err("loading flags failed (HTTP " + res.status + ") — is a bearer token required?"); return; }
   const data = await res.json();
   const rows = document.getElementById("rows");
   rows.innerHTML = "";
@@ -53,11 +57,11 @@ async function reload() {
     const pct = fe.rollout && fe.rollout.kind === "percentage" ? fe.rollout.percentage + "%" : "—";
     const tr = document.createElement("tr");
     tr.innerHTML =
-      "<td>" + f.key + "</td>" +
-      "<td class='muted'>" + f.kind + "</td>" +
+      "<td>" + esc(f.key) + "</td>" +
+      "<td class='muted'>" + esc(f.kind) + "</td>" +
       "<td class='" + (fe.on ? "on" : "off") + "'>" + (fe.on ? "on" : "off") + "</td>" +
-      "<td class='muted'>" + pct + "</td>" +
-      "<td><button onclick='toggle(this, \"" + f.key + "\")'>toggle " + env + "</button></td>";
+      "<td class='muted'>" + esc(pct) + "</td>" +
+      "<td><button onclick='toggle(this, " + JSON.stringify(f.key) + ")'>toggle " + esc(env) + "</button></td>";
     rows.appendChild(tr);
   }
 }

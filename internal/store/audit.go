@@ -51,9 +51,14 @@ func (s *Store) ListAudit(ctx context.Context, limit int) ([]AuditEntry, error) 
 	if limit <= 0 {
 		limit = 100
 	}
+	// Inner query takes the newest `limit` rows; outer query restores
+	// ascending append order. A plain `ORDER BY id ASC LIMIT ?` would
+	// freeze the window on the oldest page forever.
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT id, ts, actor, action, resource, key, env, before, after, request_id
-		 FROM audit_log ORDER BY id ASC LIMIT ?`, limit)
+		 FROM (SELECT id, ts, actor, action, resource, key, env, before, after, request_id
+		       FROM audit_log ORDER BY id DESC LIMIT ?)
+		 ORDER BY id ASC`, limit)
 	if err != nil {
 		return nil, fmt.Errorf("list audit: %w", err)
 	}

@@ -88,6 +88,53 @@ func TestRunMigrateUnleashDryRun(t *testing.T) {
 	}
 }
 
+// The default --input must match --from: an Unleash run without --input
+// used to silently parse the LaunchDarkly fixture with the Unleash
+// parser, report "0 flags", score "100%" fidelity, and exit 0.
+func TestRunMigrateUnleashDefaultInputIsUnleashFixture(t *testing.T) {
+	restore := chdirRepoRoot(t)
+	defer restore()
+	var out, errBuf strings.Builder
+	code := run([]string{"migrate", "--from=unleash", "--dry-run", "--format=json"}, &out, &errBuf)
+	if code != 0 {
+		t.Fatalf("exit = %d, stderr = %q", code, errBuf.String())
+	}
+	var d struct {
+		Diff struct {
+			Summary struct {
+				Added int `json:"added"`
+			} `json:"summary"`
+		} `json:"diff"`
+	}
+	if err := json.Unmarshal([]byte(out.String()), &d); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if d.Diff.Summary.Added != 8 {
+		t.Fatalf("default unleash input added = %d, want 8 (unleash-representative corpus)", d.Diff.Summary.Added)
+	}
+}
+
+// An empty source corpus must not sail through the fidelity gate as
+// "100%". Either a wrong-format export (0 flags parse out) or a
+// genuinely empty project is a failed migration, not a perfect one —
+// the honesty contract refuses to pretend.
+func TestRunMigrateEmptyCorpusFailsGate(t *testing.T) {
+	dir := t.TempDir()
+	empty := filepath.Join(dir, "empty-export.json")
+	if err := os.WriteFile(empty, []byte(`{"version": 7, "projects": [], "flags": []}`), 0o644); err != nil {
+		t.Fatalf("write empty fixture: %v", err)
+	}
+	var out, errBuf strings.Builder
+	code := run([]string{"migrate", "--from=launchdarkly", "--dry-run", "--format=json",
+		"--input", empty, "--fidelity-gate", "0.9"}, &out, &errBuf)
+	if code == 0 {
+		t.Fatal("empty corpus must exit 1 below the gate — refusing to pretend 100% fidelity on nothing")
+	}
+	if !strings.Contains(errBuf.String(), "below gate") {
+		t.Fatalf("stderr = %q", errBuf.String())
+	}
+}
+
 func TestRunMigrateUnleashEdgeReportsGaps(t *testing.T) {
 	restore := chdirRepoRoot(t)
 	defer restore()
