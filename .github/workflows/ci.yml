@@ -67,9 +67,13 @@ jobs:
       # ubuntu-latest runners ship node + python3, so this runs for real in CI.
       - name: cross-language SDK conformance (Go == TypeScript == Python)
         run: go test ./cmd/switchyard/ -run TestCrossLanguageConformance -v -timeout 5m
-      # Desktop GUI: the fyne-tagged source must compile (cgo + GL on the
-      # runner). The default cgo-free build is covered by the steps above.
-      - name: install desktop build deps (X11/GL/Wayland dev headers)
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libgl1-mesa-dev xorg-dev libwayland-dev libxkbcommon-dev
-      - name: desktop build compiles (fyne tag)
-        run: CGO_ENABLED=1 go build -tags fyne -o /tmp/switchyard-desktop ./cmd/switchyard
+      # Desktop GUI (Wails v2): the desktop-tagged source must compile AND
+      # its binding-layer tests must pass on the runner. ubuntu-latest ships
+      # webkit2gtk-4.1 on 24.04+; the webkit2_41 tag selects its pkg-config
+      # name. The default cgo-free build is covered by the steps above.
+      - name: install desktop build deps (webkit2gtk + gtk3)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libgtk-3-dev libwebkit2gtk-4.1-dev
+      - name: desktop build compiles (wails, production tags)
+        run: CGO_ENABLED=1 go build -tags desktop,production,webkit2_41 -o /tmp/switchyard-desktop ./cmd/switchyard
+      - name: GUI binding tests (desktop tag)
+        run: CGO_ENABLED=1 go test -tags desktop ./cmd/switchyard/ -count=1

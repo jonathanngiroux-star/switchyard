@@ -1,0 +1,10 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "switchyard",
+  "outputfilename": "switchyard-desktop",
+  "assetdir": "frontend",
+  "frontend:install": "",
+  "frontend:build": "",
+  "frontend:dev:watcher": "",
+  "frontend:dev:serverUrl": ""
+}

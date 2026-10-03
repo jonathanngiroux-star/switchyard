@@ -37,11 +37,13 @@ documented upgrade path, not a requirement to self-host.
   environment switching. Pure Go, ships in every binary including Docker.
 - **Web UI** — `switchyard serve`, then open `/`: same operations in a
   browser, zero JavaScript build step.
-- **Desktop GUI** — `switchyard desktop` opens a Fyne GUI in desktop
-  builds (`-tags fyne`, cgo). The default binary is cgo-free so it runs
-  everywhere (Docker, scratch, CI); it explains how to get the GUI instead
-  of crashing. All three surfaces share one logic layer — the TUI's model
-  tests cover the desktop's behavior too.
+- **Desktop GUI** — `switchyard desktop` opens a Wails v2 GUI in desktop
+  builds (`-tags desktop,production,webkit2_41`, cgo). The default binary
+  is cgo-free so it runs everywhere (Docker, scratch, CI); it explains
+  how to get the GUI instead of crashing. All three surfaces share one
+  logic layer — the binding layer's tests cover the desktop's behavior
+  too. Full setup wizard: **[docs/gui-setup.md](docs/gui-setup.md)** —
+  every dependency, tag, and verification step, tested on Linux.
 
 **Install** — latest release binary, checksum-verified:
 
@@ -240,7 +242,7 @@ Everything below is shipped in v0.1.0 and covered by tests or CI gates:
 | Single binary, SQLite (schema v5, auto-migration from every prior version, FK cascades, WAL) | **Done** |
 | `serve` HTTP: CRUD, toggle, evaluate, audit — store-backed, persistent across restarts | **Done** |
 | Evaluator: 12 operators, negation, segments, percentage rollouts, variant values, prerequisite enforcement (cycle-safe) | **Done** |
-| TUI (bare `switchyard`), embedded web UI, Fyne desktop GUI (`-tags fyne`) | **Done** |
+| TUI (bare `switchyard`), embedded web UI, Wails desktop GUI (`-tags desktop`) | **Done** |
 | `migrate --from=launchdarkly --dry-run`: real export shapes, fidelity score, CI gate ≥90%, committed report | **Done** |
 | `migrate --from=unleash --dry-run`: 7 strategies, 14 constraint operators, 10 named gap types, CI-gated | **Done** |
 | SDKs: Go (+ real OpenFeature provider), generated TS + Python, 96-case cross-language conformance | **Done** |
@@ -322,16 +324,30 @@ go vet ./...
 gofmt -l .
 ```
 
-Desktop build (Fyne GUI, needs cgo + GL):
+Desktop GUI (Wails v2; on Linux needs webkit2gtk-4.1 — see docs/gui-setup.md):
 
 ```bash
-CGO_ENABLED=1 go build -tags fyne -o switchyard-desktop ./cmd/switchyard
+# system deps (Arch): sudo pacman -S --needed gtk3 webkit2gtk-4.1
+CGO_ENABLED=1 go build -tags desktop,production,webkit2_41 \
+  -o switchyard-desktop ./cmd/switchyard
+./switchyard-desktop desktop          # opens the window
+
+# development mode (hot reload, from inside the package):
+cd cmd/switchyard && wails dev -tags "desktop,webkit2_41" \
+  -appargs "--db /tmp/dev.db" -m -s
 ```
+
+The GUI covers every wedge action: flag list/toggle/percentage,
+environment switch, segment editor, LaunchDarkly + Unleash dry-run
+viewer (unmapped gaps and gate refusals rendered), eval console with
+deterministic bucketing, audit log, and the donate view. Binding-layer
+tests: `CGO_ENABLED=1 go test -tags desktop ./cmd/switchyard/ -count=1`.
+GUI audit: `docs/audit/gui.md`.
 
 CI runs all three on every push, plus the migration-fidelity gates
 (LD + Unleash, ≥90% with committed reports checked for staleness), the
-96-case cross-language SDK conformance suite, and a compile check of the
-fyne desktop build.
+96-case cross-language SDK conformance suite, and the Wails desktop
+build + GUI binding tests.
 
 ## Evidence, not vanity
 

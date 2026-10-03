@@ -82,7 +82,7 @@ func usage(w io.Writer) {
 Usage:
   switchyard                      # TUI (interactive terminal)
   switchyard tui [--db PATH]
-  switchyard desktop [--db PATH]  # Fyne GUI (desktop build: -tags fyne)
+  switchyard desktop [--db PATH]  # Wails GUI (desktop build: -tags desktop,production,webkit2_41)
   switchyard version
   switchyard serve [--addr :8080] [--db PATH]
   switchyard eval [--env ENV] --user KEY [--db PATH] [--attr k=v ...] FLAG

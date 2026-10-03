@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>switchyard</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; margin: 0;
+         background: #121218; color: #ddd; }
+  header { display: flex; align-items: center; gap: 1rem; padding: 0.6rem 1rem;
+           border-bottom: 1px solid #2a2a34; --wails-draggable: drag; }
+  header h1 { font-size: 1rem; letter-spacing: 0.1em; margin: 0; }
+  header .env { margin-left: auto; }
+  nav { display: flex; gap: 0.4rem; padding: 0.5rem 1rem; border-bottom: 1px solid #2a2a34; }
+  nav button { background: #1d1d26; color: #ddd; border: 1px solid #333; padding: 0.3rem 0.8rem;
+               cursor: pointer; font: inherit; }
+  nav button.active { background: #2f2f3d; border-color: #6c6cff; }
+  main { padding: 1rem; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { text-align: left; padding: 0.4rem 0.6rem; border-bottom: 1px solid #2a2a34; }
+  th { color: #888; font-weight: normal; }
+  .on { color: #4c4; font-weight: bold; }
+  .off { color: #c44; font-weight: bold; }
+  .muted { color: #777; }
+  button.act { font: inherit; background: #1d1d26; color: #ddd; border: 1px solid #333;
+               padding: 0.15rem 0.6rem; cursor: pointer; }
+  button.act:hover { border-color: #6c6cff; }
+  input, select, textarea { font: inherit; background: #1d1d26; color: #ddd;
+                            border: 1px solid #333; padding: 0.3rem 0.5rem; }
+  .row { display: flex; gap: 0.6rem; align-items: center; margin: 0.6rem 0; flex-wrap: wrap; }
+  .err { color: #c44; white-space: pre-wrap; margin: 0.5rem 0; min-height: 1em; }
+  .ok { color: #4c4; }
+  pre { background: #0d0d12; border: 1px solid #2a2a34; padding: 0.6rem; overflow: auto; }
+  .card { border: 1px solid #2a2a34; padding: 1rem; margin: 0.5rem 0; }
+  .addr { font-family: inherit; word-break: break-all; color: #9d9; }
+  footer { position: fixed; bottom: 0; left: 0; right: 0; padding: 0.3rem 1rem;
+           border-top: 1px solid #2a2a34; background: #121218; color: #666; font-size: 0.75rem;
+           display: flex; gap: 1rem; }
+  .gaps td { border-bottom: 1px dotted #2a2a34; }
+</style>
+</head>
+<body>
+<header>
+  <h1>switchyard</h1>
+  <span class="muted" id="dbinfo"></span>
+  <span class="env">
+    <label>env <select id="env" onchange="switchEnv(this.value)"></select></label>
+  </span>
+</header>
+
+<nav>
+  <button data-view="flags" class="active" onclick="show('flags')">flags</button>
+  <button data-view="segments" onclick="show('segments')">segments</button>
+  <button data-view="migrate" onclick="show('migrate')">migrate dry-run</button>
+  <button data-view="eval" onclick="show('eval')">eval console</button>
+  <button data-view="audit" onclick="show('audit')">audit log</button>
+  <button data-view="donate" onclick="show('donate')">donate</button>
+</nav>
+
+<main>
+  <!-- flags -->
+  <section id="view-flags">
+    <div class="row">
+      <input id="newkey" placeholder="new flag key" pattern="[a-zA-Z0-9._-]+">
+      <button class="act" onclick="createFlag()">create</button>
+      <span class="muted">click a row to select · Enter toggles</span>
+    </div>
+    <div class="err" id="err-flags"></div>
+    <table id="flagtable">
+      <thead><tr><th>flag</th><th>kind</th><th>state</th><th>rollout</th><th>rules</th><th></th></tr></thead>
+      <tbody id="flagrows"><tr><td colspan="6" class="muted">loading…</td></tr></tbody>
+    </table>
+    <div class="row">
+      <input id="rolloutpct" placeholder="rollout % (0–100)" size="12">
+      <button class="act" onclick="setRollout()">set rollout %</button>
+      <button class="act" onclick="delFlag()">delete selected</button>
+      <span class="muted" id="selinfo"></span>
+    </div>
+  </section>
+
+  <!-- segments -->
+  <section id="view-segments" hidden>
+    <div class="row">
+      <button class="act" onclick="newSegment()">new segment</button>
+      <span class="muted">select a segment to edit its JSON</span>
+    </div>
+    <div class="err" id="err-segments"></div>
+    <table><tbody id="segrows"></tbody></table>
+    <div id="segform" hidden>
+      <div class="card">
+        <div class="row"><span class="muted">segment JSON — key, name, rules (clauses: attribute/operator/values/negate)</span></div>
+        <textarea id="segjson" rows="10" cols="90" spellcheck="false"></textarea>
+        <div class="row">
+          <button class="act" onclick="saveSegment()">save</button>
+          <button class="act" onclick="cancelSegment()">cancel</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- migrate -->
+  <section id="view-migrate" hidden>
+    <div class="row">
+      <select id="migsource">
+        <option value="launchdarkly">launchdarkly</option>
+        <option value="unleash">unleash</option>
+      </select>
+      <input id="migpath" placeholder="path to export JSON" size="40">
+      <button class="act" onclick="runMigrate()">dry-run</button>
+      <span class="muted">fixtures: testdata/fixtures/launchdarkly/full-export.json · testdata/fixtures/unleash/unleash-representative.json</span>
+    </div>
+    <div class="err" id="err-migrate"></div>
+    <div id="migout" hidden>
+      <div class="row"><span>projects: <span id="migprojects"></span></span></div>
+      <div class="row"><span>summary: <span id="migsummary"></span></span></div>
+      <div class="row"><span>fidelity: <span id="migfidelity"></span></span></div>
+      <h3>unmapped</h3>
+      <table class="gaps"><thead><tr><th>type</th><th>flag</th><th>rule</th><th>detail</th></tr></thead>
+      <tbody id="migunmapped"></tbody></table>
+    </div>
+  </section>
+
+  <!-- eval -->
+  <section id="view-eval" hidden>
+    <div class="row">
+      <input id="evalflag" placeholder="flag key" size="20">
+      <input id="evaluser" placeholder="user key" size="20">
+      <input id="evalattrs" placeholder='attributes {"plan":"pro"}' size="30">
+      <button class="act" onclick="runEval()">evaluate</button>
+    </div>
+    <div class="err" id="err-eval"></div>
+    <div id="evalout" hidden>
+      <pre id="evalresult"></pre>
+      <div class="muted">bucket = deterministic SHA-256(flag:user) % 100 — same inputs, same bucket, in every SDK.</div>
+    </div>
+  </section>
+
+  <!-- audit -->
+  <section id="view-audit" hidden>
+    <div class="row"><button class="act" onclick="loadAudit()">refresh</button>
+      <span class="muted">newest last (append order) · GUI mutations log with actor "gui"</span></div>
+    <div class="err" id="err-audit"></div>
+    <table><thead><tr><th>ts</th><th>actor</th><th>action</th><th>key</th><th>env</th></tr></thead>
+    <tbody id="auditrows"></tbody></table>
+  </section>
+
+  <!-- donate -->
+  <section id="view-donate" hidden>
+    <div class="card">
+      <p>If Switchyard saves you a LaunchDarkly invoice or a Kubernetes weekend, tips are welcome.
+      Tips are a tip jar, not the business model, and are never counted as traction.</p>
+      <p class="muted">Ethereum — ETH and USDC (ERC-20)</p>
+      <p class="addr" id="addr-eth"></p>
+      <button class="act" onclick="copyAddr('eth')">copy</button>
+      <p class="muted">Bitcoin — native SegWit (bech32)</p>
+      <p class="addr" id="addr-btc"></p>
+      <button class="act" onclick="copyAddr('btc')">copy</button>
+      <p class="muted" id="donate-note"></p>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <span id="foot-note"></span>
+  <span class="muted">send only the listed assets on the listed networks · addresses only ever change via signed commit to README</span>
+</footer>
+
+<script>
+// window.go.main.App.* bindings are injected by the Wails runtime.
+const App = () => window.go.main.App;
+
+let selectedKey = "";
+let envs = [];
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, c => "&" + ({ "&": "amp", "<": "lt", ">": "gt", '"': "quot", "'": "#39" })[c] + ";");
+}
+
+function err(id, msg) { document.getElementById(id).textContent = msg || ""; }
+
+// boot waits for the Wails runtime to inject the bindings before any
+// call — without this the frontend races the runtime on a slow start
+// and every view shows "window.go is undefined".
+function boot() {
+  if (window.go && window.go.main && window.go.main.App) {
+    start().catch(e => err("err-flags", String(e)));
+    return;
+  }
+  setTimeout(boot, 50);
+}
+
+async function start() {
+  try {
+    envs = await App().ListEnvironments();
+    const sel = document.getElementById("env");
+    sel.innerHTML = envs.map(e => `<option value="${esc(e.key)}" ${e.key === "production" ? "selected" : ""}>${esc(e.key)}</option>`).join("");
+    const info = await App().DBInfo();
+    document.getElementById("dbinfo").textContent = info.db || "";
+    const donate = await App().DonateInfo();
+    document.getElementById("addr-eth").textContent = donate.ethereum;
+    document.getElementById("addr-btc").textContent = donate.bitcoin;
+    document.getElementById("donate-note").textContent = donate.note;
+    document.getElementById("foot-note").textContent = donate.note;
+    await loadFlags();
+  } catch (e) {
+    err("err-flags", String(e));
+  }
+}
+
+async function switchEnv(env) {
+  try { await App().SetEnvironment(env); await loadFlags(); }
+  catch (e) { err("err-flags", String(e)); }
+}
+
+function show(view) {
+  for (const v of ["flags", "segments", "migrate", "eval", "audit", "donate"]) {
+    document.getElementById("view-" + v).hidden = v !== view;
+  }
+  document.querySelectorAll("nav button").forEach(b =>
+    b.classList.toggle("active", b.dataset.view === view));
+  if (view === "flags") loadFlags();
+  if (view === "segments") loadSegments();
+  if (view === "audit") loadAudit();
+}
+
+async function loadFlags() {
+  try {
+    const rows = await App().ListFlags();
+    const tb = document.getElementById("flagrows");
+    if (!rows.length) {
+      tb.innerHTML = `<tr><td colspan="6" class="muted">no flags — create one above</td></tr>`;
+      return;
+    }
+    tb.innerHTML = rows.map(r => `
+      <tr data-key="${esc(r.key)}" onclick="pick('${esc(r.key)}')" style="cursor:pointer">
+        <td>${esc(r.key)}</td><td class="muted">${esc(r.kind)}</td>
+        <td class="${r.on ? "on" : "off"}">${r.on ? "on" : "off"}</td>
+        <td class="muted">${esc(r.rollout)}</td><td class="muted">${r.rules}</td>
+        <td><button class="act" onclick="event.stopPropagation(); toggle('${esc(r.key)}')">toggle</button></td>
+      </tr>`).join("");
+  } catch (e) { err("err-flags", String(e)); }
+}
+
+function pick(key) {
+  selectedKey = key;
+  document.querySelectorAll("#flagrows tr").forEach(tr =>
+    tr.style.background = tr.dataset.key === key ? "#2f2f3d" : "");
+  document.getElementById("selinfo").textContent = "selected: " + key;
+}
+
+async function toggle(key) {
+  try { await App().ToggleFlag(key); await loadFlags(); }
+  catch (e) { err("err-flags", String(e)); }
+}
+
+async function createFlag() {
+  const key = document.getElementById("newkey").value.trim();
+  try {
+    await App().CreateFlag(key);
+    document.getElementById("newkey").value = "";
+    err("err-flags", "");
+    await loadFlags();
+  } catch (e) { err("err-flags", String(e)); }
+}
+
+async function setRollout() {
+  if (!selectedKey) { err("err-flags", "select a flag first"); return; }
+  const pct = parseInt(document.getElementById("rolloutpct").value, 10);
+  try {
+    await App().SetRollout(selectedKey, pct);
+    document.getElementById("rolloutpct").value = "";
+    err("err-flags", "");
+    await loadFlags();
+  } catch (e) { err("err-flags", String(e)); }
+}
+
+async function delFlag() {
+  if (!selectedKey) { err("err-flags", "select a flag first"); return; }
+  try { await App().DeleteFlag(selectedKey); selectedKey = ""; await loadFlags(); }
+  catch (e) { err("err-flags", String(e)); }
+}
+
+// keyboard path for primary actions: Enter creates a flag or runs eval,
+// arrow keys not claimed (table click selects).
+document.addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.tagName === "SELECT") {
+    if (e.key === "Enter" && e.target.id === "newkey") { e.preventDefault(); createFlag(); }
+    return;
+  }
+  const view = document.querySelector("nav button.active").dataset.view;
+  if (e.key === "Enter" && view === "flags" && selectedKey) { e.preventDefault(); toggle(selectedKey); }
+});
+
+// segments
+async function loadSegments() {
+  try {
+    const segs = await App().ListSegments();
+    const tb = document.getElementById("segrows");
+    if (!segs.length) {
+      tb.innerHTML = `<tr><td class="muted">no segments — new segment to create one</td></tr>`;
+      return;
+    }
+    tb.innerHTML = segs.map(s => `
+      <tr>
+        <td>${esc(s.key)}</td><td class="muted">${esc(s.name)}</td>
+        <td><button class="act" data-seg="${esc(JSON.stringify(s))}" onclick="editSegment(this.dataset.seg)">edit</button></td>
+      </tr>`).join("");
+  } catch (e) { err("err-segments", String(e)); }
+}
+
+function newSegment() {
+  document.getElementById("segform").hidden = false;
+  document.getElementById("segjson").value = JSON.stringify({
+    key: "new-segment", name: "", rules: [{ id: "r1", clauses: [{ attribute: "plan", operator: "eq", values: ["pro"] }] }]
+  }, null, 2);
+}
+
+function editSegment(segJSON) {
+  document.getElementById("segform").hidden = false;
+  document.getElementById("segjson").value = segJSON;
+}
+
+function cancelSegment() { document.getElementById("segform").hidden = true; }
+
+async function saveSegment() {
+  try {
+    await App().PutSegment(document.getElementById("segjson").value);
+    document.getElementById("segform").hidden = true;
+    err("err-segments", "");
+    await loadSegments();
+  } catch (e) { err("err-segments", String(e)); }
+}
+
+// migrate
+async function runMigrate() {
+  const source = document.getElementById("migsource").value;
+  const path = document.getElementById("migpath").value.trim();
+  if (!path) { err("err-migrate", "enter the path to an export file"); return; }
+  try {
+    const r = await App().DryRunMigrate(source, path);
+    document.getElementById("migout").hidden = false;
+    document.getElementById("migprojects").textContent = (r.projects || []).join(", ") || "—";
+    document.getElementById("migsummary").textContent =
+      `${r.summary.added} added, ${r.summary.removed} removed, ${r.summary.changed} changed, ${r.summary.unmapped} unmapped`;
+    document.getElementById("migfidelity").textContent =
+      `${(r.fidelity * 100).toFixed(1)}% (gate ${(r.gate * 100).toFixed(0)}%)` +
+      (r.refused ? " — BELOW GATE: import refused" : "");
+    const tb = document.getElementById("migunmapped");
+    if (!r.unmapped || !r.unmapped.length) {
+      tb.innerHTML = `<tr><td colspan="4" class="ok">no unmapped constructs</td></tr>`;
+    } else {
+      tb.innerHTML = r.unmapped.map(u => `
+        <tr><td>${esc(u.type)}</td><td>${esc(u.flag || "—")}</td><td>${esc(u.rule || "—")}</td>
+        <td class="muted">${esc(u.detail || "")}</td></tr>`).join("");
+    }
+    err("err-migrate", "");
+  } catch (e) { err("err-migrate", String(e)); }
+}
+
+// eval
+async function runEval() {
+  const flag = document.getElementById("evalflag").value.trim();
+  const user = document.getElementById("evaluser").value.trim();
+  const attrs = document.getElementById("evalattrs").value.trim();
+  if (!flag || !user) { err("err-eval", "flag key and user key are required"); return; }
+  try {
+    const r = await App().Evaluate(flag, user, attrs);
+    document.getElementById("evalout").hidden = false;
+    document.getElementById("evalresult").textContent = JSON.stringify(r, null, 2);
+    err("err-eval", "");
+  } catch (e) { err("err-eval", String(e)); }
+}
+
+// audit
+async function loadAudit() {
+  try {
+    const rows = await App().RecentAudit(50);
+    const tb = document.getElementById("auditrows");
+    tb.innerHTML = rows.map(r => `
+      <tr><td class="muted">${esc(r.ts)}</td><td>${esc(r.actor)}</td>
+      <td>${esc(r.action)}</td><td>${esc(r.key)}</td><td class="muted">${esc(r.env || "")}</td></tr>`).join("");
+    err("err-audit", "");
+  } catch (e) { err("err-audit", String(e)); }
+}
+
+function copyAddr(which) {
+  const text = which === "eth" ? document.getElementById("addr-eth").textContent
+                               : document.getElementById("addr-btc").textContent;
+  navigator.clipboard.writeText(text).then(
+    () => {},
+    () => {
+      // clipboard API blocked in some webviews: fall back to a selection prompt
+      window.prompt("copy the address:", text);
+    });
+}
+
+boot();
+</script>
+</body>
+</html>

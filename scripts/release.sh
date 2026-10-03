@@ -3,8 +3,9 @@
 # Usage: bash scripts/release.sh <version> [outdir]
 #
 # Default binaries are CGO_ENABLED=0 (run anywhere: Docker, scratch, CI).
-# The desktop GUI (fyne tag) needs cgo + GL and is built only for the
-# host platform here; CI release jobs build it per-OS.
+# The desktop GUI (wails: desktop,production,webkit2_41 tags) needs cgo +
+# webkit2gtk-4.1 and is built only for the host platform here; CI release
+# jobs build it per-OS.
 set -eu
 VERSION="${1:?usage: release.sh <version> [outdir]}"
 OUT="${2:-dist}"
@@ -25,10 +26,11 @@ for os in linux darwin windows; do
   done
 done
 
-# Desktop GUI: fyne tag, cgo, host platform only.
+# Desktop GUI: wails tags (desktop,production,webkit2_41), cgo, host
+# platform only. Needs webkit2gtk-4.1 (see docs/gui-setup.md).
 if command -v gcc >/dev/null 2>&1; then
-  echo "==> switchyard-desktop-$(go env GOOS)-$(go env GOARCH) (fyne, cgo)"
-  CGO_ENABLED=1 go build -tags fyne -trimpath \
+  echo "==> switchyard-desktop-$(go env GOOS)-$(go env GOARCH) (wails, cgo)"
+  CGO_ENABLED=1 go build -tags desktop,production,webkit2_41 -trimpath \
     -ldflags "-s -w -X main.version=${VERSION}" \
     -o "${OUT}/switchyard-desktop-$(go env GOOS)-$(go env GOARCH)" ./cmd/switchyard
 else

@@ -3,7 +3,7 @@ package main
 // launcher.go: what bare `switchyard`, `switchyard tui`, and
 // `switchyard desktop` do. The product decision: bare invocation in a
 // terminal opens the TUI (the operator's front door); `desktop` opens the
-// Fyne GUI in desktop builds and explains itself in default (cgo-free)
+// Wails GUI in desktop builds and explains itself in default (cgo-free)
 // builds. Non-TTY contexts never hang — they print and exit.
 
 import (
