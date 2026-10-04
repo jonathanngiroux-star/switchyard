@@ -66,6 +66,7 @@ type App struct {
 	st  *store.Store
 	db  string
 	env string
+	ctx context.Context // wails context; used by the test bridge only
 }
 
 // FlagRow is one row in the GUI flag table: the flag plus its resolved
@@ -111,10 +112,14 @@ func newApp(dbPath string) (*App, error) {
 
 func (a *App) close() { _ = a.st.Close() }
 
-// startup receives the wails context. Kept for the lifecycle hook; the
-// app uses context.Background() for store calls so a hung window event
-// loop can never starve mutations.
-func (a *App) startup(_ context.Context) {}
+// startup receives the wails context and arms the test bridge (a no-op
+// unless SWITCHYARD_GUI_TESTBRIDGE=1). Store calls use
+// context.Background() so a hung window event loop can never starve
+// mutations.
+func (a *App) startup(ctx context.Context) {
+	a.ctx = ctx
+	a.startTestBridge()
+}
 
 // --- flags -------------------------------------------------------------
 

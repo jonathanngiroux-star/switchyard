@@ -3,6 +3,11 @@ package main
 // tui.go: the terminal UI. tview/tcell is pure Go (no cgo), so the TUI
 // ships in the default cgo-free binary. All state mutation lives on
 // tuiModel — fully testable without a TTY; rendering is a thin layer.
+//
+// ONE event loop per process: runTUI owns the single app.Run(). The
+// wizard and prompts swap roots with SetRoot and never call Run() or
+// Stop() themselves — the old tviewInput/tviewFlash helpers did both
+// and killed the app on every n/r/error path (see docs/audit/tui.md).
 
 import (
 	"context"
@@ -21,30 +26,6 @@ import (
 type tcellEvent = tcell.EventKey
 
 const tcellColorGreen = tcell.ColorGreen
-
-// tviewInput shows a modal prompt and resolves with the entered text.
-func tviewInput(app *tview.Application, label string) string {
-	// Simplified synchronous prompt via a form in a modal overlay.
-	var answer string
-	done := make(chan struct{})
-	form := tview.NewForm()
-	form.AddInputField(label, "", 30, nil, func(text string) { answer = text })
-	form.AddButton("OK", func() { close(done); app.Stop() })
-	app.SetRoot(form, true).SetFocus(form)
-	go func() { <-done }()
-	if err := app.Run(); err != nil {
-		return ""
-	}
-	return strings.TrimSpace(answer)
-}
-
-// tviewFlash shows a transient error message.
-func tviewFlash(app *tview.Application, msg string) {
-	modal := tview.NewModal().SetText(msg).AddButtons([]string{"OK"})
-	modal.SetDoneFunc(func(_ int, _ string) { app.Stop() })
-	app.SetRoot(modal, true)
-	_ = app.Run()
-}
 
 // tuiModel is the TUI's testable core: it owns the store handle, the
 // selected environment, and every mutation the UI can perform.
@@ -142,12 +123,24 @@ func (m *tuiModel) environments(ctx context.Context) ([]string, error) {
 
 // runTUI renders the model with tview. Interactive only — the launcher
 // guarantees a TTY before calling this.
+//
+// Structure: ONE app.Run() at the bottom — the only place app.Run or
+// app.Stop is ever called. The first-run wizard (empty store) swaps the
+// root under that loop; when it finishes, its done channel tells the
+// waiter goroutine to reinstall the table. Prompts ('n', 'r') are
+// SetRoot swaps too; answers come back on channels.
 func runTUI(st *store.Store) int {
 	m := newTUIModel(st)
 	app := tview.NewApplication()
 
+	const keybar = " Enter: toggle · r: rollout · n: new · d: delete · ?: setup wizard · 1/2/3: env · q: quit "
 	table := tview.NewTable().SetBorders(true).SetSelectable(true, false)
-	table.SetBorder(true).SetTitle(" switchyard — flags (Enter: toggle, r: rollout, n: new, d: delete, 1/2/3: env, q: quit) ")
+	table.SetBorder(true).SetTitle(" switchyard — flags " + keybar)
+
+	// uiModal is true while the wizard or a prompt owns the screen. The
+	// global input capture must NOT react to single letters/digits then
+	// (it stole '2' from the wizard's env picker and killed the flow).
+	uiModal := false
 
 	refresh := func() {
 		rows, err := m.rows(context.Background())
@@ -191,7 +184,56 @@ func runTUI(st *store.Store) int {
 		return cell.Text
 	}
 
+	installTable := func() {
+		uiModal = false
+		refresh()
+		app.SetRoot(table, true).SetFocus(table)
+	}
+
+	showStatus := func(msg string) {
+		table.SetTitle(" " + msg + " " + keybar)
+	}
+
+	// promptFor swaps in a one-field form. The answer is handled by the
+	// onDone callback — the input capture returns immediately and NEVER
+	// blocks the event loop (a <-channel read inside the capture would
+	// deadlock: the sender runs on this same loop).
+	promptFor := func(label, initial string, onDone func(string)) {
+		uiModal = true
+		input := tview.NewInputField().
+			SetLabel(label).
+			SetText(initial).
+			SetFieldWidth(30)
+		input.SetDoneFunc(func(key tcell.Key) {
+			answer := ""
+			if key == tcell.KeyEnter {
+				answer = strings.TrimSpace(input.GetText())
+			}
+			installTable()
+			onDone(answer)
+		})
+		app.SetRoot(input, true).SetFocus(input)
+	}
+
+	// startWizard runs the wizard under the single loop and reinstalls
+	// the table when it completes (finish or cancel).
+	startWizard := func() {
+		uiModal = true
+		w := newWizard(app, m)
+		go func() {
+			<-w.done
+			app.QueueUpdateDraw(func() { installTable() })
+		}()
+		w.run()
+	}
+
 	app.SetInputCapture(func(event *tcellEvent) *tcellEvent {
+		// While the wizard or a prompt owns the screen, ONLY q is
+		// honored globally (kill switch); everything else goes to the
+		// modal's own handler.
+		if uiModal && event.Rune() != 'q' {
+			return event
+		}
 		switch event.Rune() {
 		case 'q':
 			app.Stop()
@@ -202,37 +244,51 @@ func runTUI(st *store.Store) int {
 			if err == nil && idx < len(envs) {
 				m.env = envs[idx]
 			}
-			refresh()
+			installTable()
 			return nil
 		case 'n':
-			key := tviewInput(app, "new flag key")
-			if key != "" {
-				if err := m.create(context.Background(), key); err != nil {
-					tviewFlash(app, err.Error())
+			promptFor("new flag key: ", "", func(key string) {
+				if key == "" {
+					return
 				}
-			}
-			refresh()
+				if err := m.create(context.Background(), key); err != nil {
+					showStatus(err.Error())
+				} else {
+					showStatus("created " + key)
+				}
+				installTable()
+			})
 			return nil
 		case 'd':
 			if key := selectedKey(); key != "" {
 				if err := m.remove(context.Background(), key); err != nil {
-					tviewFlash(app, err.Error())
+					showStatus(err.Error())
+				} else {
+					showStatus("deleted " + key)
 				}
 			}
-			refresh()
+			installTable()
 			return nil
 		case 'r':
 			if key := selectedKey(); key != "" {
-				pctStr := tviewInput(app, "rollout % (0-100)")
-				if pct, err := strconv.Atoi(strings.TrimSpace(pctStr)); err == nil {
-					if err := m.setRollout(context.Background(), key, pct); err != nil {
-						tviewFlash(app, err.Error())
+				promptFor("rollout % (0-100): ", "", func(answer string) {
+					if answer == "" {
+						return
 					}
-				} else if pctStr != "" {
-					tviewFlash(app, "rollout must be a number")
-				}
+					pct, err := strconv.Atoi(strings.TrimSpace(answer))
+					if err != nil {
+						showStatus("rollout must be a number")
+					} else if err := m.setRollout(context.Background(), key, pct); err != nil {
+						showStatus(err.Error())
+					} else {
+						showStatus(fmt.Sprintf("rollout %s = %d%%", key, pct))
+					}
+					installTable()
+				})
 			}
-			refresh()
+			return nil
+		case '?':
+			startWizard()
 			return nil
 		}
 		return event
@@ -241,14 +297,22 @@ func runTUI(st *store.Store) int {
 	table.SetSelectedFunc(func(row, col int) {
 		if key := selectedKey(); key != "" {
 			if err := m.toggle(context.Background(), key); err != nil {
-				tviewFlash(app, err.Error())
+				showStatus(err.Error())
+			} else {
+				showStatus("toggled " + key)
 			}
 		}
-		refresh()
+		installTable()
 	})
 
-	refresh()
-	if err := app.SetRoot(table, true).SetFocus(table).Run(); err != nil {
+	// First run on an empty store: the wizard replaces the table until
+	// it completes. Non-empty stores go straight to the table.
+	if rows, err := m.rows(context.Background()); err == nil && len(rows) == 0 {
+		startWizard()
+	} else {
+		installTable()
+	}
+	if err := app.Run(); err != nil {
 		return 1
 	}
 	return 0

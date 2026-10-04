@@ -33,3 +33,9 @@ func launchDesktop(args []string, stdout, stderr io.Writer) int {
 	fmt.Fprintln(stderr, "The terminal UI ships in every binary: just run `switchyard` (or `switchyard tui`).")
 	return 1
 }
+
+// launchDefault in the default build is the TUI (the operator's front
+// door); the desktop build overrides this to open the GUI.
+func launchDefault(stdout, stderr io.Writer) int {
+	return launchTUI(nil, stdout, stderr)
+}

@@ -35,6 +35,9 @@ documented upgrade path, not a requirement to self-host.
 - **TUI** — run bare `switchyard` (or `switchyard tui`) in a terminal:
   full-screen flag table, toggle/create/delete, rollout editing,
   environment switching. Pure Go, ships in every binary including Docker.
+  First launch on an empty store runs a 4-step setup wizard (welcome →
+  environment → first flag → donate); `?` reopens it from the main
+  screen; `Esc` skips it. Scripted PTY audit: `scripts/tui-pty-audit.sh`.
 - **Web UI** — `switchyard serve`, then open `/`: same operations in a
   browser, zero JavaScript build step.
 - **Desktop GUI** — `switchyard desktop` opens a Wails v2 GUI in desktop

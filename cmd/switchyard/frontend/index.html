@@ -153,14 +153,28 @@
       Tips are a tip jar, not the business model, and are never counted as traction.</p>
       <p class="muted">Ethereum — ETH and USDC (ERC-20)</p>
       <p class="addr" id="addr-eth"></p>
-      <button class="act" onclick="copyAddr('eth')">copy</button>
+      <button class="act" id="copy-eth" onclick="copyAddr('eth')">copy</button>
       <p class="muted">Bitcoin — native SegWit (bech32)</p>
       <p class="addr" id="addr-btc"></p>
-      <button class="act" onclick="copyAddr('btc')">copy</button>
+      <button class="act" id="copy-btc" onclick="copyAddr('btc')">copy</button>
       <p class="muted" id="donate-note"></p>
     </div>
   </section>
 </main>
+
+<!-- first-run wizard: shown when the store is empty; '?' reopens it -->
+<section id="view-wizard" hidden>
+  <div class="card" style="max-width:44rem">
+    <h2 id="wiz-title" style="margin-top:0">switchyard setup</h2>
+    <p class="muted" id="wiz-sub"></p>
+    <div id="wiz-body"></div>
+    <div class="row" style="margin-top:1rem">
+      <button class="act" id="wiz-back" onclick="wizNav(-1)">back</button>
+      <button class="act" id="wiz-next" onclick="wizNav(1)">next</button>
+      <span class="muted" id="wiz-hint">keys: ← back · →/Enter next · ? reopen wizard from any screen</span>
+    </div>
+  </div>
+</section>
 
 <footer>
   <span id="foot-note"></span>
@@ -204,6 +218,9 @@ async function start() {
     document.getElementById("donate-note").textContent = donate.note;
     document.getElementById("foot-note").textContent = donate.note;
     await loadFlags();
+    // First run on an empty store: the setup wizard walks the core
+    // workflow once. '?' reopens it any time.
+    await maybeStartWizard();
   } catch (e) {
     err("err-flags", String(e));
   }
@@ -388,13 +405,265 @@ async function loadAudit() {
 function copyAddr(which) {
   const text = which === "eth" ? document.getElementById("addr-eth").textContent
                                : document.getElementById("addr-btc").textContent;
-  navigator.clipboard.writeText(text).then(
-    () => {},
-    () => {
-      // clipboard API blocked in some webviews: fall back to a selection prompt
-      window.prompt("copy the address:", text);
-    });
+  const btn = document.getElementById("copy-" + which);
+  const done = ok => {
+    btn.textContent = ok ? "copied ✓" : "select + ctrl-c";
+    setTimeout(() => { btn.textContent = "copy"; }, ok ? 1500 : 4000);
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => done(true), () => fallbackCopy(text, done));
+  } else {
+    fallbackCopy(text, done);
+  }
 }
+
+// WebKitGTK clipboard permission is inconsistent — the textarea path
+// works everywhere and needs no permission.
+function fallbackCopy(text, done) {
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(ta);
+    if (ok) { done(true); return; }
+  } catch (e) { /* fall through to prompt */ }
+  // Last resort: preselect the address so ctrl-c always works.
+  const el = document.getElementById("addr-" + (text === document.getElementById("addr-eth").textContent ? "eth" : "btc"));
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+  done(false);
+}
+
+// ---------- first-run wizard -------------------------------------------
+// The wizard runs when the store is empty (first launch on a fresh data
+// dir) and is reopenable with '?' from any screen. Steps: welcome →
+// environment → create the first flag → donate. Keyboard: ← back,
+// →/Enter next, Esc cancels into the main screen.
+
+const WIZ_STEPS = [
+  { title: "welcome", sub: "self-hosted feature flags — one Go binary, one SQLite file" },
+  { title: "environment", sub: "flags are configured per environment; pick your default" },
+  { title: "first flag", sub: "create a starter flag so the main screen has something to show" },
+  { title: "support", sub: "optional tips — never a paywall, never counted as traction" },
+];
+
+let wizStep = 0;
+let wizardActive = false;
+let wizFlagKey = ""; // preserved across Back/Next so re-navigation never blocks done
+
+function wizShow() {
+  for (const v of ["flags", "segments", "migrate", "eval", "audit", "donate"]) {
+    document.getElementById("view-" + v).hidden = true;
+  }
+  document.getElementById("view-wizard").hidden = false;
+  wizardActive = true;
+  wizRender();
+}
+
+function wizHide() {
+  document.getElementById("view-wizard").hidden = true;
+  wizardActive = false;
+  show("flags");
+}
+
+function wizRender() {
+  const s = WIZ_STEPS[wizStep];
+  document.getElementById("wiz-title").textContent = `switchyard setup — ${s.title} (${wizStep + 1}/${WIZ_STEPS.length})`;
+  document.getElementById("wiz-sub").textContent = s.sub;
+  document.getElementById("wiz-back").disabled = wizStep === 0;
+  document.getElementById("wiz-next").textContent = wizStep === WIZ_STEPS.length - 1 ? "done" : "next";
+  const body = document.getElementById("wiz-body");
+  if (wizStep === 0) {
+    body.innerHTML = `
+      <p>This wizard walks the core workflow once: pick an environment, create a flag, evaluate it. The same SQLite file serves the TUI, the web UI, and this GUI — everything you do here is real.</p>
+      <p class="muted">Locally evaluated. OpenFeature-compatible. Migration dry-runs for LaunchDarkly and Unleash.</p>`;
+  } else if (wizStep === 1) {
+    body.innerHTML = `
+      <p>Environments are first-class: a flag's on/off state, rollout %, and rules are per environment.</p>
+      <div class="row"><label>default environment
+        <select id="wiz-env">${(envs.length ? envs : [{ key: "production" }]).map(e =>
+          `<option value="${esc(e.key)}" ${e.key === "production" ? "selected" : ""}>${esc(e.key)}</option>`).join("")}
+        </select></label></div>`;
+  } else if (wizStep === 2) {
+    body.innerHTML = `
+      <p>Create your first flag — it appears on the main screen when the wizard closes.</p>
+      <div class="row">
+        <input id="wiz-flag" placeholder="flag key e.g. welcome-banner" pattern="[a-zA-Z0-9._-]+" value="${esc(wizFlagKey)}">
+        <span class="muted" id="wiz-flag-msg"></span>
+      </div>`;
+  } else {
+    body.innerHTML = `
+      <p>Switchyard is funded by optional tips. No subscriptions, no feature gates — everything works whether you donate or not.</p>
+      <p class="muted">Ethereum — ETH and USDC (ERC-20)</p><p class="addr">${esc(document.getElementById("addr-eth").textContent)}</p>
+      <p class="muted">Bitcoin — native SegWit (bech32)</p><p class="addr">${esc(document.getElementById("addr-btc").textContent)}</p>
+      <p class="muted">These addresses match README byte-for-byte and only change via signed commit.</p>`;
+  }
+}
+
+async function wizNav(dir) {
+  if (dir > 0) {
+    if (wizStep === 1) {
+      const env = document.getElementById("wiz-env");
+      if (env) { try { await App().SetEnvironment(env.value); } catch (e) {} }
+    }
+    if (wizStep === 2) {
+      const input = document.getElementById("wiz-flag");
+      wizFlagKey = input ? input.value.trim() : wizFlagKey;
+      if (!wizFlagKey) {
+        document.getElementById("wiz-flag-msg").textContent = "enter a flag key to continue (or leave it and press done)";
+        return;
+      }
+      // Already created on a previous pass (Back then Next)? Skip the
+      // duplicate-create error and continue.
+      try { await App().CreateFlag(wizFlagKey); } catch (e) {
+        if (!String(e).includes("already exists")) {
+          document.getElementById("wiz-flag-msg").textContent = String(e);
+          return;
+        }
+      }
+    }
+    if (wizStep === WIZ_STEPS.length - 1) { wizHide(); return; }
+    wizStep++;
+  } else if (wizStep > 0) {
+    // leaving the flag step: keep what was typed
+    if (wizStep === 2) {
+      const input = document.getElementById("wiz-flag");
+      if (input) wizFlagKey = input.value.trim();
+    }
+    wizStep--;
+  }
+  wizRender();
+}
+
+async function maybeStartWizard() {
+  try {
+    const rows = await App().ListFlags();
+    if (!rows.length) wizShow();
+  } catch (e) { /* wizard is best-effort; the main screen still works */ }
+}
+
+document.addEventListener("keydown", e => {
+  if (wizardActive) {
+    if (e.key === "ArrowLeft") { wizNav(-1); e.preventDefault(); }
+    if (e.key === "ArrowRight" || e.key === "Enter") {
+      if (e.target.tagName !== "INPUT" && e.target.tagName !== "SELECT") { wizNav(1); e.preventDefault(); }
+    }
+    if (e.key === "Escape") { wizHide(); e.preventDefault(); }
+    return;
+  }
+  if (e.key === "?" && e.target.tagName !== "INPUT" && e.target.tagName !== "TEXTAREA") {
+    wizStep = 0; wizShow(); e.preventDefault();
+  }
+});
+
+// ---------- in-app test bridge (go-gui-audit-testing skill) -----------
+// Fixed-switch interpreter; arms only on the "test:cmd" event, which
+// the Go side emits only when SWITCHYARD_GUI_TESTBRIDGE=1.
+(function () {
+  "use strict";
+  if (!window.runtime || typeof window.runtime.EventsOn !== "function") return;
+
+  function result(cmd, ok, value, error) {
+    var payload;
+    try {
+      payload = JSON.stringify({
+        id: cmd && cmd.id ? cmd.id : "",
+        ok: !!ok,
+        value: value === undefined ? null : value,
+        error: error || null,
+      });
+    } catch (e) {
+      payload = JSON.stringify({ id: "", ok: false, value: null, error: "serialize: " + e });
+    }
+    if (window.go && window.go.main && window.go.main.App && window.go.main.App.TestResult) {
+      window.go.main.App.TestResult(payload).catch(function () {});
+    }
+  }
+  function fire(el, type) { el.dispatchEvent(new Event(type, { bubbles: true })); }
+  function clickEl(el) { el.scrollIntoView({ block: "center" }); el.click(); }
+  function q(sel) { return document.querySelector(sel); }
+
+  function interpret(cmd) {
+    switch (cmd.op) {
+      case "click": {
+        var el = q(cmd.sel); if (!el) return result(cmd, false, null, "no element for " + cmd.sel);
+        clickEl(el); return result(cmd, true, null, null);
+      }
+      case "clickText": {
+        var root = cmd.sel ? q(cmd.sel) : document;
+        if (!root) return result(cmd, false, null, "no scope for " + cmd.sel);
+        var want = (cmd.text || "").trim().toLowerCase();
+        var cands = root.querySelectorAll("button, a, [role=button], input[type=submit], input[type=button], li, summary, tr, [data-key]");
+        var hit = null;
+        for (var i = 0; i < cands.length; i++) {
+          var t = (cands[i].textContent || cands[i].value || "").trim().toLowerCase();
+          if (want && t.indexOf(want) !== -1) { hit = cands[i]; break; }
+        }
+        if (!hit) return result(cmd, false, null, "no clickable with text " + cmd.text);
+        clickEl(hit); return result(cmd, true, null, null);
+      }
+      case "fill": {
+        var f = q(cmd.sel); if (!f) return result(cmd, false, null, "no element for " + cmd.sel);
+        f.focus(); f.value = "";
+        if (document.execCommand) { try { document.execCommand("insertText", false, String(cmd.text ?? "")); } catch (e) {} }
+        if (f.value !== String(cmd.text ?? "")) f.value = String(cmd.text ?? "");
+        fire(f, "input"); fire(f, "change");
+        return result(cmd, true, f.value, null);
+      }
+      case "select": {
+        var s = q(cmd.sel); if (!s) return result(cmd, false, null, "no element for " + cmd.sel);
+        var opt = null;
+        for (var j = 0; j < s.options.length; j++) {
+          if (s.options[j].value === cmd.value || s.options[j].textContent === cmd.value) { opt = s.options[j]; break; }
+        }
+        if (!opt) return result(cmd, false, null, "no option " + cmd.value);
+        s.value = opt.value; fire(s, "input"); fire(s, "change");
+        return result(cmd, true, s.value, null);
+      }
+      case "key": {
+        var target = document.activeElement || document.body;
+        target.dispatchEvent(new KeyboardEvent(cmd.event || "keydown", {
+          key: cmd.key || "", code: cmd.code || "", keyCode: cmd.keycode || 0,
+          which: cmd.keycode || 0, bubbles: true, cancelable: true,
+        }));
+        return result(cmd, true, null, null);
+      }
+      case "read": {
+        var r = q(cmd.sel); if (!r) return result(cmd, false, null, "no element for " + cmd.sel);
+        var cs; try { cs = getComputedStyle(r); } catch (e) { cs = null; }
+        var out = {
+          text: r.textContent, value: r.value !== undefined ? r.value : null,
+          checked: r.checked !== undefined ? !!r.checked : null,
+          display: cs ? cs.display : null, hidden: !!r.hidden,
+          disabled: !!r.disabled, cls: r.className || "",
+        };
+        if (cmd.attr) out.attr = r.getAttribute(cmd.attr);
+        return result(cmd, true, out, null);
+      }
+      case "count": return result(cmd, true, document.querySelectorAll(cmd.sel).length, null);
+      case "texts": {
+        var nodes = document.querySelectorAll(cmd.sel); var arr = [];
+        for (var k = 0; k < nodes.length; k++) arr.push(nodes[k].textContent.trim());
+        return result(cmd, true, arr, null);
+      }
+      case "wizardState": return result(cmd, true, { active: wizardActive, step: wizStep }, null);
+      case "ping": return result(cmd, true, "pong", null);
+      default: return result(cmd, false, null, "unknown op: " + cmd.op);
+    }
+  }
+
+  window.runtime.EventsOn("test:cmd", function (cmd) {
+    try { interpret(cmd || {}); } catch (e) { result(cmd, false, null, "interpreter: " + e); }
+  });
+})();
 
 boot();
 </script>
