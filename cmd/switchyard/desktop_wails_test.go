@@ -303,3 +303,20 @@ func TestRecentAuditAppendOrder(t *testing.T) {
 	}
 	var _ migrate.Summary
 }
+
+// TestBareInvocationRoutesToGUI pins the desktop-build product decision:
+// bare `switchyard` (what `wails dev` launches) must route to the GUI
+// launcher, not the TUI. In a non-TTY test context the GUI launcher
+// reports a non-zero exit — the assertion is that it does NOT print the
+// TUI's headless hint.
+func TestBareInvocationRoutesToGUI(t *testing.T) {
+	var out, errBuf strings.Builder
+	code := launchDefault(&out, &errBuf)
+	combined := out.String() + errBuf.String()
+	if strings.Contains(combined, "the TUI needs an interactive terminal") {
+		t.Fatalf("bare invocation hit the TUI path in the desktop build:\n%s", combined)
+	}
+	if code == 0 && !strings.Contains(combined, "desktop") {
+		t.Fatalf("bare invocation exited 0 without opening/mentioning the GUI: code=%d\n%s", code, combined)
+	}
+}

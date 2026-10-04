@@ -49,9 +49,10 @@ func main() {
 
 func run(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		// Bare `switchyard` in a terminal opens the TUI — the operator's
-		// front door. In non-TTY contexts launchTUI prints a hint instead.
-		return launchTUI(args, stdout, stderr)
+		// Bare `switchyard`: the TUI in the default build (the operator's
+		// front door; non-TTY contexts get a hint), the Wails GUI in the
+		// desktop build (which is also what `wails dev` launches).
+		return launchDefault(stdout, stderr)
 	}
 	switch args[0] {
 	case "version":
